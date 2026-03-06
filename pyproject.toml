@@ -1,0 +1,20 @@
+[project]
+name = "recon-setup"
+version = "0.1.0"
+description = "Automate the setup and enumeration process for offensive security labs."
+requires-python = ">=3.10"
+dependencies = [
+    "impacket",
+    "libtmux",
+    "requests",
+    "rich",
+    "urllib3",
+    "watchdog",
+]
+
+[project.scripts]
+recon-setup = "recon_setup.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

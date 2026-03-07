@@ -232,6 +232,7 @@ def build_ldap_commands(
                 "rm -f $(pwd)/hashes.kerberoast",
                 (
                     f"{ft}nxc ldap {ip} -u '{user}' -p '{password}' -k"
+                    f" --pass-pol --pso"
                     f" --asreproast hashes.asreproast"
                     f" --kerberoasting hashes.kerberoast"
                     f" --find-delegation --trusted-for-delegation"

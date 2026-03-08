@@ -152,7 +152,7 @@ class TestSpawnMachineApi:
 
 class TestGetActiveIp:
     def test_returns_ip_from_data_key(self):
-        resp = make_response(json_data={"data": {"ip": "10.10.11.100"}})
+        resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
         with patch("recon_setup.utils.htb_cli.requests") as mock_req:
             with patch("recon_setup.utils.htb_cli.time"):
                 mock_req.get.return_value = resp
@@ -160,7 +160,7 @@ class TestGetActiveIp:
         assert ip == "10.10.11.100"
 
     def test_returns_none_when_ip_is_null(self):
-        resp = make_response(json_data={"data": {"ip": None}})
+        resp = make_response(json_data={"info": {"ip": None}})
         with patch("recon_setup.utils.htb_cli.requests") as mock_req:
             with patch("recon_setup.utils.htb_cli.time"):
                 mock_req.get.return_value = resp
@@ -225,7 +225,7 @@ class TestSuccessfulNonReleaseSpawn:
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
         spawn_ok = make_response(status_code=200)
-        ip_resp = make_response(json_data={"data": {"ip": "10.10.11.100"}})
+        ip_resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
 
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
              patch("recon_setup.utils.htb_cli.time"), \
@@ -242,7 +242,7 @@ class TestSuccessfulNonReleaseSpawn:
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
         spawn_ok = make_response(status_code=200)
-        ip_resp = make_response(json_data={"data": {"ip": "10.10.11.100"}})
+        ip_resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
 
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
              patch("recon_setup.utils.htb_cli.time"), \
@@ -286,7 +286,7 @@ class TestNewReleaseRetryLoop:
         get_machines_resp = make_response(json_data=machines)
         spawn_fail = make_response(status_code=500)
         spawn_ok = make_response(status_code=200)
-        ip_resp = make_response(json_data={"data": {"ip": "10.10.11.100"}})
+        ip_resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
 
         # monotonic calls: window_end=mono[0]+60, then two while-condition checks
         mono_values = [0, 1, 2]
@@ -347,8 +347,8 @@ class TestIpPollNoneThenIp:
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
         spawn_ok = make_response(status_code=200)
-        ip_null_resp = make_response(json_data={"data": {"ip": None}})
-        ip_real_resp = make_response(json_data={"data": {"ip": "10.10.11.200"}})
+        ip_null_resp = make_response(json_data={"info": {"ip": None}})
+        ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.200"}})
 
         # GET sequence: get_machine_id (unreleased) → ip=None → ip=real
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
@@ -366,8 +366,8 @@ class TestIpPollNoneThenIp:
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
         spawn_ok = make_response(status_code=200)
-        ip_null_resp = make_response(json_data={"data": {"ip": None}})
-        ip_real_resp = make_response(json_data={"data": {"ip": "10.10.11.200"}})
+        ip_null_resp = make_response(json_data={"info": {"ip": None}})
+        ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.200"}})
 
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
              patch("recon_setup.utils.htb_cli.time") as mock_time, \
@@ -385,8 +385,8 @@ class TestIpPollNoneThenIp:
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
         spawn_ok = make_response(status_code=200)
-        null_resp = make_response(json_data={"data": {"ip": None}})
-        ip_real_resp = make_response(json_data={"data": {"ip": "10.10.11.50"}})
+        null_resp = make_response(json_data={"info": {"ip": None}})
+        ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.50"}})
 
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
              patch("recon_setup.utils.htb_cli.time"), \

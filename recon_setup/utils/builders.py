@@ -289,7 +289,12 @@ def build_ldap_commands(
         )
 
         pane3 = Command(
-            args=["bloodhound-cli up"],
+            args=[
+                "bloodhound-cli up",
+                "sleep 1",
+                "bh-upload.py -i $BH_TOKEN_ID -k $BH_TOKEN_KEY -u http://127.0.0.1:8081 -c",
+                "firefox http://127.0.0.1:8081 &> /dev/null & disown",
+            ],
             description="Start BloodHound",
             delay=2,
         )

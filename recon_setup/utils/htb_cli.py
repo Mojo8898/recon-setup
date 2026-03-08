@@ -94,18 +94,18 @@ def spawn_machine_api(machine_id, token):
 
 
 def get_active_ip(token):
-    """GET /api/v4/season/machine/active and return data.ip, or None."""
+    """GET /api/v4/machine/active and return info.ip, or None."""
     headers = _auth_headers(token)
-    url = f"{BASE_URL}/api/v4/season/machine/active"
+    url = f"{BASE_URL}/api/v4/machine/active"
     response = requests.get(url, headers=headers)
     _check_ratelimit(response)
     if response.status_code != 200:
         return None
     data = response.json()
     if isinstance(data, dict):
-        inner = data.get("data") or data.get("info")
-        if isinstance(inner, dict):
-            ip = inner.get("ip")
+        info = data.get("info")
+        if isinstance(info, dict):
+            ip = info.get("ip")
             return ip if ip else None
     return None
 

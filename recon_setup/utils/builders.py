@@ -224,11 +224,6 @@ def build_ldap_commands(
                 f"{ft}bloodyAD --host {dc_fqdn} -d {domain}"
                 f" -u '{user}' -p '{password}' -k get writable",
                 "echo",
-                (
-                    f"{ft}bloodhound-ce-python --zip -c All -d {domain}"
-                    f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}'"
-                ),
-                "echo",
                 "rm -f $(pwd)/hashes.kerberoast",
                 (
                     f"{ft}nxc ldap {ip} -u '{user}' -p '{password}' -k"
@@ -292,8 +287,13 @@ def build_ldap_commands(
             args=[
                 "bloodhound-cli up",
                 "sleep 1",
-                "bh-upload.py -i $BH_TOKEN_ID -k $BH_TOKEN_KEY -u http://127.0.0.1:8081 -c",
-                "firefox http://127.0.0.1:8081 &> /dev/null & disown",
+                "echo",
+                (
+                    f"{ft}bloodhound-ce-python --zip -c All -d {domain}"
+                    f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}'"
+                    f" && bh-upload.py -i $BH_TOKEN_ID -k $BH_TOKEN_KEY"
+                    f" -u http://127.0.0.1:8081 -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
+                ),
             ],
             description="Start BloodHound",
             delay=2,

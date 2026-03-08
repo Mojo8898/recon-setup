@@ -53,24 +53,30 @@ def get_machine_id(name, token):
     """Look up machine ID by name.
 
     Queries /api/v5/machines?state=unreleased first, then state=active.
+    Follows pagination via links.next until all pages are exhausted.
     Match is case-insensitive.  Raises ValueError if not found in either.
     """
     headers = _auth_headers(token)
     for state in ("unreleased", "active"):
         url = f"{BASE_URL}/api/v5/machines?state={state}"
-        response = requests.get(url, headers=headers)
-        _check_ratelimit(response)
-        if response.status_code == 200:
+        while url:
+            response = requests.get(url, headers=headers)
+            _check_ratelimit(response)
+            if response.status_code != 200:
+                break
             data = response.json()
             if isinstance(data, dict):
                 machine_list = data.get("data", [])
+                next_url = data.get("links", {}).get("next")
             elif isinstance(data, list):
                 machine_list = data
+                next_url = None
             else:
-                machine_list = []
+                break
             for machine in machine_list:
                 if machine.get("name", "").lower() == name.lower():
                     return machine["id"]
+            url = next_url
     raise ValueError(f"Machine '{name}' not found in unreleased or active listings")
 
 

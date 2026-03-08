@@ -10,7 +10,7 @@ BASE_URL = "https://labs.hackthebox.com"
 
 # Rate-limit-aware timing constants
 SPAWN_INTERVAL = 4.4    # 60s / 15 spawn-limit * 1.1 buffer
-IP_POLL_INTERVAL = 1.1  # 60s / 60 IP-poll-limit * 1.1 buffer
+IP_POLL_INTERVAL = 0.73  # 10s / 15 IP-poll-limit * 1.1 buffer (/api/v4/machine/active)
 SPAWN_WINDOW = 60       # seconds for the new-release retry window
 RATELIMIT_SLEEP = 60    # back-off when x-ratelimit-remaining <= 1
 

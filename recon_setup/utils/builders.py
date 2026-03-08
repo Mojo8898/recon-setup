@@ -389,7 +389,7 @@ def build_smb_commands(
                 args=[
                     "aliasr clear all",
                     "echo",
-                    f"{ft}aliasr scan {ip} -u '{user}' -p '{password}'",
+                    f"aliasr scan {ip} -u '{user}' -p '{password}'",
                 ],
                 description="aliasr SMB scan (auth)",
                 delay=2,

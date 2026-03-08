@@ -48,8 +48,8 @@ def main():
 
     # Initialize HTB CLI arguments
     htb_cli_group = parser.add_argument_group("HTB CLI Arguments", "Arguments related to HTB CLI functionality")
-    htb_cli_group.add_argument("--spawn", type=str, help="Spawn the target machine using the HTB CLI instead of providing an IP (requires htb-cli)")
-    htb_cli_group.add_argument("-n", "--new_release", action="store_true", help="Wait for the scheduled release time (7pm UTC) and spawn automatically")
+    htb_cli_group.add_argument("--spawn", type=str, help="Spawn the target machine via the HTB API instead of providing an IP (requires HTB_TOKEN env var)")
+    htb_cli_group.add_argument("-n", "--new_release", action="store_true", help="Wait until T-60s before the scheduled release time (7pm UTC) and spawn automatically via the HTB API")
 
     # Initialize automation arguments
     automation_group = parser.add_argument_group("Automation Arguments", "Arguments related to automated tasking")

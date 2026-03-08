@@ -332,8 +332,8 @@ class TestNewReleaseRetryLoop:
         assert htb_mod.SPAWN_INTERVAL == pytest.approx(4.4)
 
     def test_ip_poll_interval_constant_is_correct(self):
-        """IP_POLL_INTERVAL = 60s / 60 limit * 1.1 buffer = 1.1s"""
-        assert htb_mod.IP_POLL_INTERVAL == pytest.approx(1.1)
+        """IP_POLL_INTERVAL = 10s / 15 limit * 1.1 buffer = 0.73s (/api/v4/machine/active)"""
+        assert htb_mod.IP_POLL_INTERVAL == pytest.approx(0.73)
 
 
 # ---------------------------------------------------------------------------

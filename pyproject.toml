@@ -5,7 +5,7 @@ description = "Automate the setup and enumeration process for offensive security
 requires-python = ">=3.10"
 dependencies = [
     "impacket",
-    "libtmux",
+    "libtmux==0.53.1",
     "requests",
     "rich",
     "urllib3",

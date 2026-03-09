@@ -22,14 +22,13 @@
 ## Install
 
 ```bash
+# Latest release (PyPI)
+uv tool install recon-setup
+pipx install recon-setup
+
 # Latest commit (GitHub)
 uv tool install git+https://github.com/Mojo8898/recon-setup
 pipx install git+https://github.com/Mojo8898/recon-setup
-
-# Local development
-git clone https://github.com/Mojo8898/recon-setup
-cd recon-setup
-uv sync
 ```
 
 ## Usage

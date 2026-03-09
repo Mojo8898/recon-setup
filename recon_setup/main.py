@@ -115,10 +115,10 @@ def main():
         openvpn_pane.send_keys(f"sudo openvpn {vpn_path}")
     ligolo_pane = openvpn_pane.split(direction=libtmux.pane.PaneDirection.Below)
     ligolo_pane.send_keys("mkdir -p ligolo; cd ligolo; proxy -selfcert")
+    ip_pane = openvpn_pane.split(direction=libtmux.pane.PaneDirection.Right)
+    ip_pane.send_keys("command -v htb-gui &>/dev/null && htb-gui; ipa")
     updog_pane = ligolo_pane.split(direction=libtmux.pane.PaneDirection.Right)
     updog_pane.send_keys("updog -p 8000 -d ~/staging")
-    # smbserver_pane = updog_pane.split(direction=libtmux.pane.PaneDirection.Below, size=20)
-    # smbserver_pane.send_keys("smbserver.py -smb2support a . -username mojo -password 'Password123!'")
     base_window = session.new_window(window_name=ip)
 
     # Initialize panes
@@ -134,7 +134,7 @@ def main():
         if os.path.isfile(vpn_path):
             verify_connection(ip)
             sleep(1)
-        session.select_window(1)
+        session.select_window(2)
         base_pane.select()
 
         # Initialize automation if argument is provided

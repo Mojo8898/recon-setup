@@ -123,10 +123,8 @@ def build_http_commands(ip: str, fqdn: str) -> list[Command]:
     )
     pane3 = Command(
         args=[
-            (
-                f"sleep 30"
-                f"nuclei -u {ip} -severity critical,high,medium -c 10"
-            ),
+            f"sleep 30",
+            f"nuclei -u {ip} -severity critical,high,medium -c 10",
         ],
         description="Nuclei scan",
         delay=2,

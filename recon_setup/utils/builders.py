@@ -123,7 +123,10 @@ def build_http_commands(ip: str, fqdn: str) -> list[Command]:
     )
     pane3 = Command(
         args=[
-            f"nuclei -u {ip} -severity critical,high,medium -c 10",
+            (
+                f"sleep 30"
+                f"nuclei -u {ip} -severity critical,high,medium -c 10"
+            ),
         ],
         description="Nuclei scan",
         delay=2,
@@ -291,8 +294,8 @@ def build_ldap_commands(
                 (
                     f"{ft}bloodhound-ce-python --zip -c All -d {domain}"
                     f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}'"
-                    f" && bh-upload.py -i $BH_TOKEN_ID -k $BH_TOKEN_KEY"
-                    f" -u http://127.0.0.1:8081 -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
+                    f" && bloodhound-ce-ctl -u http://127.0.0.1:8081"
+                    f" -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
                 ),
             ],
             description="Start BloodHound",

@@ -599,7 +599,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "impacket" },
-    { name = "libtmux" },
+    { name = "libtmux", specifier = "==0.53.1" },
     { name = "requests" },
     { name = "rich" },
     { name = "urllib3" },

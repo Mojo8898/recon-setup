@@ -366,24 +366,25 @@ class TestBuildLdapCommands:
         idx_19700 = next(i for i, a in enumerate(args) if "hashcat" in a and "19700" in a)
         assert idx_19700 == idx_13100 + 1
 
-    def test_pane1_has_bloodhound(self):
+    def test_pane3_has_bloodhound(self):
         cmds = build_ldap_commands(
             ip="10.0.0.1", domain="dom.local", dc_fqdn="dc.dom.local", cred=("u", "p")
         )
-        assert any("bloodhound-ce-python" in a for a in cmds[0].args)
+        assert any("bloodhound-ce-python" in a for a in cmds[2].args)
 
-    def test_pane1_bloodhound_after_bloodyad(self):
+    def test_pane3_bloodhound_after_cli_up(self):
         cmds = build_ldap_commands(
             ip="10.0.0.1", domain="dom.local", dc_fqdn="dc.dom.local", cred=("u", "p")
         )
-        args = cmds[0].args
-        idx_bloodyad = next(i for i, a in enumerate(args) if "bloodyAD" in a)
+        args = cmds[2].args
+        idx_cli_up = next(i for i, a in enumerate(args) if a == "bloodhound-cli up")
         idx_echo = next(i for i, a in enumerate(args) if a == "echo")
         idx_bloodhound = next(i for i, a in enumerate(args) if "bloodhound-ce-python" in a)
-        # bloodhound-ce-python should be at index 2 (after bloodyAD at 0, echo at 1)
-        assert idx_bloodyad == 0
-        assert idx_echo == 1
-        assert idx_bloodhound == 2
+        # bloodhound-cli up (0) → sleep 1 (1) → echo (2) → bloodhound-ce-python (3)
+        assert idx_cli_up == 0
+        assert idx_echo == 2
+        assert idx_bloodhound == 3
+        assert idx_bloodhound > idx_cli_up
 
     def test_pane1_faketime_on_bloodyad(self):
         cmds = build_ldap_commands(

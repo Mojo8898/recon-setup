@@ -16,18 +16,23 @@ RATELIMIT_SLEEP = 60    # back-off when x-ratelimit-remaining <= 1
 
 
 def get_current_time():
-    """Return current UTC time, falling back to local clock on errors."""
+    """Return current UTC time via NTP (pool.ntp.org), falling back to local clock on errors."""
+    import socket
+    import struct
+
+    NTP_DELTA = 2208988800  # seconds between 1900-01-01 and 1970-01-01
     try:
-        response = requests.get("http://worldtimeapi.org/api/timezone/Etc/UTC")
-        response.raise_for_status()
-        data = response.json()
-        iso_str = data.get("datetime")
-        if iso_str.endswith("Z"):
-            iso_str = iso_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(iso_str)
+        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        client.settimeout(3)
+        client.sendto(b"\x1b" + 47 * b"\0", ("pool.ntp.org", 123))
+        data, _ = client.recvfrom(1024)
+        t = struct.unpack("!12I", data)[10] - NTP_DELTA
+        return datetime.fromtimestamp(t, tz=timezone.utc)
     except Exception as e:
-        print("Error fetching time from API, falling back to local time:", e)
+        print(f"Error fetching time from NTP, falling back to local time: {e}")
         return datetime.now(timezone.utc)
+    finally:
+        client.close()
 
 
 def _check_ratelimit(response):

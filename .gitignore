@@ -1,3 +1,9 @@
+# AI
+AGENTS.md
+ARCHITECTURE.md
+CLAUDE.md
+backlog/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -14,7 +20,8 @@ build/
 # Test
 .pytest_cache
 
-# AI
-AGENTS.md
-ARCHITECTURE.md
-backlog/
+# uv (published package — resolver uses pyproject constraints, not this lock)
+uv.lock
+
+# Claude Code (personal, per-machine)
+.claude/

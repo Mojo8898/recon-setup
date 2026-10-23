@@ -42,6 +42,24 @@ def load_spec(reload: bool = False) -> dict[str, Any]:
     return _cache
 
 
+def spec_get(*keys: str) -> Any:
+    """Return the task-spec node at the nested *keys*.
+
+    Raises :class:`TaskSpecError` (not a bare ``KeyError``) when a key along the
+    path is missing, so a renamed or dropped ``tasks.yaml`` section fails with a
+    message that names the missing section instead of surfacing deep inside a
+    builder.
+    """
+    node: Any = load_spec()
+    walked: list[str] = []
+    for key in keys:
+        walked.append(str(key))
+        if not isinstance(node, dict) or key not in node:
+            raise TaskSpecError(f"tasks.yaml: missing section '{'.'.join(walked)}'")
+        node = node[key]
+    return node
+
+
 def _render(template: str, params: dict[str, Any]) -> str:
     """Substitute every ``{{name}}`` in *template* from *params*.
 

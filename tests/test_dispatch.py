@@ -2,8 +2,11 @@
 every builder renders with no leftover placeholders.
 """
 
+import pytest
+
 import recon_setup.utils.tasks as T
 from recon_setup.utils import builders as B
+from recon_setup.utils.task_spec import spec_get, TaskSpecError
 
 
 class Ctx:
@@ -104,6 +107,19 @@ def _strings(cmds):
     for c in cmds:
         yield c.description
         yield from c.args
+
+
+class TestSpecGet:
+    def test_returns_nested_node(self):
+        assert isinstance(spec_get("ftp", "panes"), list)
+
+    def test_missing_top_level_raises_taskspecerror(self):
+        with pytest.raises(TaskSpecError, match="nope"):
+            spec_get("nope")
+
+    def test_missing_nested_key_names_full_path(self):
+        with pytest.raises(TaskSpecError, match="ftp.panez"):
+            spec_get("ftp", "panez")
 
 
 def test_no_unrendered_placeholders():

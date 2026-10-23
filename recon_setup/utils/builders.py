@@ -11,7 +11,7 @@ None when share enumeration was skipped / failed.
 from __future__ import annotations
 
 from recon_setup.utils.commands import Command, faketime_prefix
-from recon_setup.utils.task_spec import load_spec, render_panes
+from recon_setup.utils.task_spec import render_panes, spec_get
 
 # Shares that are always present on Windows and uninteresting to spider.
 _NON_DEFAULT_SHARES: frozenset[str] = frozenset(
@@ -39,7 +39,7 @@ def build_ftp_commands(
     params: dict = {"ip": ip}
     if cred:
         params["user"], params["password"] = cred
-    return render_panes(load_spec()["ftp"]["panes"], params, has_cred=bool(cred))
+    return render_panes(spec_get("ftp", "panes"), params, has_cred=bool(cred))
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ def build_ftp_commands(
 
 def build_dns_commands(ip: str, domain: str) -> list[Command]:
     """Reverse-lookup and zone-transfer enumeration (see tasks.yaml ``dns``)."""
-    return render_panes(load_spec()["dns"]["panes"], {"ip": ip, "domain": domain})
+    return render_panes(spec_get("dns", "panes"), {"ip": ip, "domain": domain})
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ def build_http_commands(ip: str, fqdn: str) -> list[Command]:
     known.  Vhost fuzzing headers use *fqdn* in all cases (preserving the
     original handler behaviour).  Command text lives in tasks.yaml (``http``).
     """
-    return render_panes(load_spec()["http"]["panes"], {"ip": ip, "fqdn": fqdn})
+    return render_panes(spec_get("http", "panes"), {"ip": ip, "fqdn": fqdn})
 
 
 # ---------------------------------------------------------------------------
@@ -86,14 +86,13 @@ def build_kerberos_commands(
     if not domain:
         return []
 
-    spec = load_spec()["kerberos"]
     params: dict = {"ip": ip, "domain": domain, "ft": faketime_prefix(ip)}
 
     cmds: list[Command] = []
     if cred:
         params["user"], params["password"] = cred
-        cmds += render_panes([spec["tgt"]], params)
-    cmds += render_panes([spec["userenum"]], params)
+        cmds += render_panes([spec_get("kerberos", "tgt")], params)
+    cmds += render_panes([spec_get("kerberos", "userenum")], params)
     return cmds
 
 
@@ -104,7 +103,7 @@ def build_kerberos_commands(
 
 def build_rpc_commands(ip: str) -> list[Command]:
     """RPC domain info queries (see tasks.yaml ``rpc``)."""
-    return render_panes(load_spec()["rpc"]["panes"], {"ip": ip})
+    return render_panes(spec_get("rpc", "panes"), {"ip": ip})
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +132,6 @@ def build_ldap_commands(
     logic: cred takes precedence over anon_bind, and the faketime prefix is
     supplied as the {{ft}} placeholder.
     """
-    spec = load_spec()["ldap"]
     params: dict = {
         "ip": ip,
         "domain": domain,
@@ -143,10 +141,10 @@ def build_ldap_commands(
 
     if cred:
         params["user"], params["password"] = cred
-        return render_panes(spec["variants"]["auth"], params)
+        return render_panes(spec_get("ldap", "variants", "auth"), params)
 
     if anon_bind:
-        return render_panes(spec["variants"]["anon"], params)
+        return render_panes(spec_get("ldap", "variants", "anon"), params)
 
     return []
 
@@ -158,7 +156,7 @@ def build_ldap_commands(
 
 def build_https_commands(fqdn: str) -> list[Command]:
     """Open browser and inspect HTTPS cert/headers (see tasks.yaml ``https``)."""
-    return render_panes(load_spec()["https"]["panes"], {"fqdn": fqdn})
+    return render_panes(spec_get("https", "panes"), {"fqdn": fqdn})
 
 
 # ---------------------------------------------------------------------------
@@ -183,28 +181,27 @@ def build_smb_commands(
     *logic*: choosing the auth/anon variant, looping once per non-default
     share, and the share_method guards.  It never hardcodes a command.
     """
-    spec = load_spec()["smb"]
     params: dict = {"ip": ip, "dc_fqdn": dc_fqdn, "domain": domain, "ft": faketime_prefix(ip)}
     if cred:
         params["user"], params["password"] = cred
 
     # Base panes: credentialled path differs from the null/guest sweep.
     variant = "auth" if cred else "anon"
-    cmds = render_panes(spec["base"][variant], params)
+    cmds = render_panes(spec_get("smb", "base", variant), params)
 
     # Per-share spider + one-shot spider_plus (only when shares were enumerated).
     if shares and share_method:
         # user/pass templates require a cred; the other methods never do.
         usable = share_method != "user/pass" or bool(cred)
         if usable:
-            spider_tpl = spec["spider"].get(share_method)
+            spider_tpl = spec_get("smb", "spider").get(share_method)
             for share in shares:
                 if share["name"] in _NON_DEFAULT_SHARES:
                     continue
                 if spider_tpl:
                     cmds += render_panes([spider_tpl], {**params, "share": share["name"]})
 
-            spider_plus_tpl = spec["spider_plus"].get(share_method)
+            spider_plus_tpl = spec_get("smb", "spider_plus").get(share_method)
             if spider_plus_tpl:
                 cmds += render_panes([spider_plus_tpl], params)
 
@@ -233,7 +230,7 @@ def build_mssql_commands(
         "password": password,
         "ft": faketime_prefix(ip),
     }
-    return render_panes(load_spec()["mssql"]["panes"], params)
+    return render_panes(spec_get("mssql", "panes"), params)
 
 
 # ---------------------------------------------------------------------------
@@ -243,4 +240,4 @@ def build_mssql_commands(
 
 def build_nfs_commands(ip: str) -> list[Command]:
     """NFS share enumeration (see tasks.yaml ``nfs``)."""
-    return render_panes(load_spec()["nfs"]["panes"], {"ip": ip})
+    return render_panes(spec_get("nfs", "panes"), {"ip": ip})

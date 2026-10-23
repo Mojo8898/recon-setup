@@ -1,0 +1,132 @@
+# Declarative task definitions.
+#
+# This file holds the *data* side of task building: the command templates,
+# their pane grouping, delays, and descriptions.  The *logic* side — runtime
+# probes (enum_smb_shares, anonymous_bind), which variant to pick, and loops
+# over enumerated shares — stays in Python (builders.py / tasks.py).
+#
+# Placeholders use {{name}} and are substituted by task_spec.render_panes().
+# Available names depend on the handler; common ones: ip, domain, fqdn,
+# dc_fqdn, user, password, share, ft (faketime prefix, trailing space).
+#
+# Pane keys:
+#   description  human-readable label (shown in logs / tests)
+#   delay        seconds to sleep before the pane runs (default 2)
+#   run          command strings always included
+#   run_if_cred  command strings appended only when a credential is present
+
+# ---------------------------------------------------------------------------
+# FTP (port 21) — simple, fully declarative
+# ---------------------------------------------------------------------------
+ftp:
+  panes:
+    - description: "FTP enumeration"
+      delay: 7
+      run:
+        - "nxc ftp {{ip}} -u '' -p '' --ls"
+      run_if_cred:
+        - "nxc ftp {{ip}} -u '{{user}}' -p '{{password}}' --ls"
+
+# ---------------------------------------------------------------------------
+# DNS (port 53) — simple, fully declarative
+# ---------------------------------------------------------------------------
+dns:
+  panes:
+    - description: "DNS enumeration"
+      delay: 2
+      run:
+        - "dig @{{ip}} -x {{ip}} +short"
+        - "dig axfr @{{ip}} {{domain}}"
+
+# ---------------------------------------------------------------------------
+# SMB (port 445) — hybrid: variant chosen in Python, per-share loop in Python,
+# command text lives here.
+# ---------------------------------------------------------------------------
+smb:
+  base:
+    auth:
+      - description: "aliasr SMB scan (auth)"
+        delay: 2
+        run:
+          - "aliasr clear all"
+          - "echo"
+          - "aliasr scan {{ip}} -u '{{user}}' -p '{{password}}'"
+      - description: "SMB module scan (auth)"
+        delay: 7
+        run:
+          - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k --pass-pol --shares"
+          - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k -M timeroast"
+          - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k -M ntlm_reflection -M sccm-recon6 -M printnightmare -M webdav -M spooler -M ioxidresolver -M gpp_autologin -M gpp_password -M ms17-010 -M nopac -M remove-mic -M smbghost -M enum_ca -M aws-credentials"
+      - description: "SMB RID brute (auth)"
+        delay: 7
+        run:
+          - "rm -f $(pwd)/smb.out"
+          - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k --shares --users --pass-pol --rid-brute 10000 --log $(pwd)/smb.out"
+          - "cat smb.out | grep TypeUser | cut -d '\\' -f 2 | cut -d ' ' -f 1 > users.txt"
+          - "echo"
+          - "cat users.txt"
+    anon:
+      - description: "aliasr SMB scan (anon)"
+        delay: 2
+        run:
+          - "aliasr clear all"
+          - "echo"
+          - "aliasr scan {{ip}}"
+      - description: "SMB RID brute (anon)"
+        delay: 7
+        run:
+          - "rm -f $(pwd)/smb.out"
+          - "nxc smb {{ip}} -u '' -p '' --shares --users --pass-pol --rid-brute 10000 --log $(pwd)/smb.out"
+          - "nxc smb {{ip}} -u 'a' -p '' --rid-brute 10000 --log $(pwd)/smb.out"
+          - "cat smb.out | grep TypeUser | cut -d '\\' -f 2 | cut -d ' ' -f 1 > users.txt"
+          - "echo"
+          - "cat users.txt"
+          - "echo"
+          - "{{ft}}nxc smb {{ip}} -u users.txt -p users.txt -k --no-bruteforce --continue-on-success"
+          - "nxc smb {{ip}} -u users.txt -p '' --continue-on-success"
+
+  # Per-share spider.  Keyed by share_method; the Python builder loops over the
+  # enumerated non-default shares and renders this template once per share.
+  spider:
+    "user/pass":
+      description: "SMB spider: {{share}} (auth)"
+      delay: 7
+      run:
+        - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k --spider '{{share}}' --regex . --depth 2"
+    "null":
+      description: "SMB spider: {{share}} (null)"
+      delay: 7
+      run:
+        - "nxc smb {{ip}} -u '' -p '' --spider '{{share}}' --regex . --depth 2"
+    "guest":
+      description: "SMB spider: {{share}} (guest)"
+      delay: 7
+      run:
+        - "nxc smb {{ip}} -u 'a' -p '' --spider '{{share}}' --regex . --depth 2"
+
+  # One-shot spider_plus download + smbclientng, keyed by share_method.
+  spider_plus:
+    "user/pass":
+      description: "SMB spider_plus (auth)"
+      delay: 7
+      run:
+        - "{{ft}}nxc smb {{ip}} -u '{{user}}' -p '{{password}}' -k -M spider_plus -o DOWNLOAD_FLAG=True EXCLUDE_EXTS=ico,lnk,svg,js,css,scss,map,png,jpg,html,npmignore EXCLUDE_FILTER=ADMIN$,C$,Users,IPC$,NETLOGON,SYSVOL,bootstrap,lang OUTPUT_FOLDER=."
+        - "cat {{ip}}.json | jq '. | map_values(keys)'"
+        - "echo"
+        - "{{ft}}smbclientng --host {{dc_fqdn}} -d {{domain}} -u '{{user}}' -p '{{password}}' -k -S <(echo 'shares')"
+    "null":
+      description: "SMB spider_plus (null)"
+      delay: 7
+      run:
+        - "nxc smb {{ip}} -u '' -p '' -M spider_plus -o DOWNLOAD_FLAG=True EXCLUDE_EXTS=ico,lnk,svg,js,css,scss,map,png,jpg,html,npmignore EXCLUDE_FILTER=ADMIN$,C$,Users,IPC$,NETLOGON,SYSVOL,bootstrap,lang OUTPUT_FOLDER=."
+        - "cat {{ip}}.json | jq '. | map_values(keys)'"
+        - "echo"
+        - "smbclientng --host {{ip}} -d {{domain}} -u '' -p '' -S <(echo 'shares')"
+    "guest":
+      description: "SMB spider_plus (guest)"
+      delay: 7
+      run:
+        - "nxc smb {{ip}} -u 'a' -p '' -M spider_plus -o DOWNLOAD_FLAG=True EXCLUDE_EXTS=ico,lnk,svg,js,css,scss,map,png,jpg,html,npmignore EXCLUDE_FILTER=ADMIN$,C$,Users,IPC$,NETLOGON,SYSVOL,bootstrap,lang OUTPUT_FOLDER=."
+        - "cat {{ip}}.json | jq '. | map_values(keys)'"
+        - "echo"
+        - "smbclientng --host {{ip}} -d {{domain}} -u a -p '' -S <(echo 'shares')"

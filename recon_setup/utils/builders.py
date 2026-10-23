@@ -11,6 +11,7 @@ None when share enumeration was skipped / failed.
 from __future__ import annotations
 
 from recon_setup.utils.commands import Command, faketime_prefix, with_faketime
+from recon_setup.utils.task_spec import load_spec, render_panes
 
 # Shares that are always present on Windows and uninteresting to spider.
 _NON_DEFAULT_SHARES: frozenset[str] = frozenset(
@@ -31,15 +32,14 @@ def build_ftp_commands(
 
     Unauthenticated: anonymous login only.
     Authenticated: anonymous first, then credentialled.
+
+    Command text lives in tasks.yaml (``ftp``); this function only supplies the
+    placeholder values and signals whether a cred is present.
     """
-    anon = f"nxc ftp {ip} -u '' -p '' --ls"
+    params: dict = {"ip": ip}
     if cred:
-        user, password = cred
-        auth = f"nxc ftp {ip} -u '{user}' -p '{password}' --ls"
-        args = [anon, auth]
-    else:
-        args = [anon]
-    return [Command(args=args, description="FTP enumeration", delay=7)]
+        params["user"], params["password"] = cred
+    return render_panes(load_spec()["ftp"]["panes"], params, has_cred=bool(cred))
 
 
 # ---------------------------------------------------------------------------
@@ -48,17 +48,8 @@ def build_ftp_commands(
 
 
 def build_dns_commands(ip: str, domain: str) -> list[Command]:
-    """Reverse-lookup and zone-transfer enumeration."""
-    return [
-        Command(
-            args=[
-                f"dig @{ip} -x {ip} +short",
-                f"dig axfr @{ip} {domain}",
-            ],
-            description="DNS enumeration",
-            delay=2,
-        )
-    ]
+    """Reverse-lookup and zone-transfer enumeration (see tasks.yaml ``dns``)."""
+    return render_panes(load_spec()["dns"]["panes"], {"ip": ip, "domain": domain})
 
 
 # ---------------------------------------------------------------------------
@@ -382,221 +373,35 @@ def build_smb_commands(
 
     *shares* and *share_method* come from enum_smb_shares().  Logging of
     found non-default shares is left to the handler (orchestration concern).
+
+    Command text lives in tasks.yaml (``smb``).  This function keeps the
+    *logic*: choosing the auth/anon variant, looping once per non-default
+    share, and the share_method guards.  It never hardcodes a command.
     """
-    ft = faketime_prefix(ip)
-    cmds: list[Command] = []
-
+    spec = load_spec()["smb"]
+    params: dict = {"ip": ip, "dc_fqdn": dc_fqdn, "domain": domain, "ft": faketime_prefix(ip)}
     if cred:
-        user, password = cred
+        params["user"], params["password"] = cred
 
-        # pane 1 — aliasr
-        cmds.append(
-            Command(
-                args=[
-                    "aliasr clear all",
-                    "echo",
-                    f"aliasr scan {ip} -u '{user}' -p '{password}'",
-                ],
-                description="aliasr SMB scan (auth)",
-                delay=2,
-            )
-        )
+    # Base panes: credentialled path differs from the null/guest sweep.
+    variant = "auth" if cred else "anon"
+    cmds = render_panes(spec["base"][variant], params)
 
-        # pane 2 — nxc module scans
-        cmds.append(
-            Command(
-                args=[
-                    (
-                        f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                        f" --pass-pol --shares"
-                    ),
-                    (
-                        f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                        f" -M timeroast"
-                    ),
-                    (
-                        f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                        f" -M ntlm_reflection -M sccm-recon6 -M printnightmare"
-                        f" -M webdav -M spooler -M ioxidresolver"
-                        f" -M gpp_autologin -M gpp_password -M ms17-010"
-                        f" -M nopac -M remove-mic -M smbghost -M enum_ca"
-                        f" -M aws-credentials"
-                    ),
-                ],
-                description="SMB module scan (auth)",
-                delay=7,
-            )
-        )
-
-        # pane 3 — RID brute + user extraction
-        cmds.append(
-            Command(
-                args=[
-                    "rm -f $(pwd)/smb.out",
-                    (
-                        f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                        f" --shares --users --pass-pol"
-                        f" --rid-brute 10000 --log $(pwd)/smb.out"
-                    ),
-                    "cat smb.out | grep TypeUser | cut -d '\\' -f 2"
-                    " | cut -d ' ' -f 1 > users.txt",
-                    "echo",
-                    "cat users.txt",
-                ],
-                description="SMB RID brute (auth)",
-                delay=7,
-            )
-        )
-
-    else:
-        # pane 1 — aliasr (anon)
-        cmds.append(
-            Command(
-                args=[
-                    "aliasr clear all",
-                    "echo",
-                    f"aliasr scan {ip}",
-                ],
-                description="aliasr SMB scan (anon)",
-                delay=2,
-            )
-        )
-
-        # pane 2 — null + guest RID brute + spray
-        cmds.append(
-            Command(
-                args=[
-                    "rm -f $(pwd)/smb.out",
-                    (
-                        f"nxc smb {ip} -u '' -p '' --shares --users --pass-pol"
-                        f" --rid-brute 10000 --log $(pwd)/smb.out"
-                    ),
-                    (
-                        f"nxc smb {ip} -u 'a' -p ''"
-                        f" --rid-brute 10000 --log $(pwd)/smb.out"
-                    ),
-                    "cat smb.out | grep TypeUser | cut -d '\\' -f 2"
-                    " | cut -d ' ' -f 1 > users.txt",
-                    "echo",
-                    "cat users.txt",
-                    "echo",
-                    (
-                        f"{ft}nxc smb {ip} -u users.txt -p users.txt -k"
-                        f" --no-bruteforce --continue-on-success"
-                    ),
-                    f"nxc smb {ip} -u users.txt -p '' --continue-on-success",
-                ],
-                description="SMB RID brute (anon)",
-                delay=7,
-            )
-        )
-
-    # per-share spider (only when shares were enumerated)
+    # Per-share spider + one-shot spider_plus (only when shares were enumerated).
     if shares and share_method:
-        non_default = [s for s in shares if s["name"] not in _NON_DEFAULT_SHARES]
+        # user/pass templates require a cred; the other methods never do.
+        usable = share_method != "user/pass" or bool(cred)
+        if usable:
+            spider_tpl = spec["spider"].get(share_method)
+            for share in shares:
+                if share["name"] in _NON_DEFAULT_SHARES:
+                    continue
+                if spider_tpl:
+                    cmds += render_panes([spider_tpl], {**params, "share": share["name"]})
 
-        for share in non_default:
-            name = share["name"]
-            if share_method == "user/pass" and cred:
-                user, password = cred
-                cmds.append(
-                    Command(
-                        args=[
-                            f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                            f" --spider '{name}' --regex . --depth 2"
-                        ],
-                        description=f"SMB spider: {name} (auth)",
-                        delay=7,
-                    )
-                )
-            elif share_method == "null":
-                cmds.append(
-                    Command(
-                        args=[
-                            f"nxc smb {ip} -u '' -p ''"
-                            f" --spider '{name}' --regex . --depth 2"
-                        ],
-                        description=f"SMB spider: {name} (null)",
-                        delay=7,
-                    )
-                )
-            elif share_method == "guest":
-                cmds.append(
-                    Command(
-                        args=[
-                            f"nxc smb {ip} -u 'a' -p ''"
-                            f" --spider '{name}' --regex . --depth 2"
-                        ],
-                        description=f"SMB spider: {name} (guest)",
-                        delay=7,
-                    )
-                )
-
-        # spider_plus + smbclientng
-        _exclude = (
-            "DOWNLOAD_FLAG=True"
-            " EXCLUDE_EXTS=ico,lnk,svg,js,css,scss,map,png,jpg,html,npmignore"
-            " EXCLUDE_FILTER=ADMIN$,C$,Users,IPC$,NETLOGON,SYSVOL,bootstrap,lang"
-            " OUTPUT_FOLDER=."
-        )
-        if share_method == "user/pass" and cred:
-            user, password = cred
-            cmds.append(
-                Command(
-                    args=[
-                        (
-                            f"{ft}nxc smb {ip} -u '{user}' -p '{password}' -k"
-                            f" -M spider_plus -o {_exclude}"
-                        ),
-                        f"cat {ip}.json | jq '. | map_values(keys)'",
-                        "echo",
-                        (
-                            f"{ft}smbclientng --host {dc_fqdn} -d {domain}"
-                            f" -u '{user}' -p '{password}' -k -S <(echo 'shares')"
-                        ),
-                    ],
-                    description="SMB spider_plus (auth)",
-                    delay=7,
-                )
-            )
-        elif share_method == "null":
-            cmds.append(
-                Command(
-                    args=[
-                        (
-                            f"nxc smb {ip} -u '' -p ''"
-                            f" -M spider_plus -o {_exclude}"
-                        ),
-                        f"cat {ip}.json | jq '. | map_values(keys)'",
-                        "echo",
-                        (
-                            f"smbclientng --host {ip} -d {domain}"
-                            f" -u '' -p '' -S <(echo 'shares')"
-                        ),
-                    ],
-                    description="SMB spider_plus (null)",
-                    delay=7,
-                )
-            )
-        elif share_method == "guest":
-            cmds.append(
-                Command(
-                    args=[
-                        (
-                            f"nxc smb {ip} -u 'a' -p ''"
-                            f" -M spider_plus -o {_exclude}"
-                        ),
-                        f"cat {ip}.json | jq '. | map_values(keys)'",
-                        "echo",
-                        (
-                            f"smbclientng --host {ip} -d {domain}"
-                            f" -u a -p '' -S <(echo 'shares')"
-                        ),
-                    ],
-                    description="SMB spider_plus (guest)",
-                    delay=7,
-                )
-            )
+            spider_plus_tpl = spec["spider_plus"].get(share_method)
+            if spider_plus_tpl:
+                cmds += render_panes([spider_plus_tpl], params)
 
     return cmds
 

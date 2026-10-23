@@ -2,32 +2,46 @@ import re
 import subprocess
 
 from recon_setup.utils.logger import write_log
+from recon_setup.utils.commands import faketime_prefix
 
 _NEGATIVE = re.compile(r"\[\-\]")
+
+# nxc binds/auths can take >10s against a DC over VPN; the old 8s cap caused
+# premature timeouts (→ false negatives, e.g. a real anonymous bind missed).
+_NXC_TIMEOUT = 20
 
 
 def anonymous_bind(context):
     cmd = ["nxc", "ldap", context.ip, "-u", "", "-p", ""]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=8, check=False)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=_NXC_TIMEOUT, check=False)
     except Exception as e:
         write_log(context.log_file, f"NetExec ldap subprocess error: {e}", "ERROR")
         return False
     out = p.stdout or ""
+    # A "[-]" marks either a failed bind or an anonymous bind whose *search* is
+    # denied ("successful bind must be completed") — in both cases anonymous
+    # enumeration is not useful, so treat either as no anonymous bind.
     return not _NEGATIVE.search(out)
 
 
 def enum_smb_shares(context):
-    def run_nxc(user, password):
-        cmd = f"nxc smb {context.ip} -u {user} "
+    def run_nxc(user, password, kerberos=False):
+        # NTLM by default; Kerberos (-k) only on request, wrapped in faketime so
+        # DC clock skew (KRB_AP_ERR_SKEW) doesn't sink the probe the way it did
+        # before — the actual task commands already use this same faketime trick.
+        prefix = faketime_prefix(context.ip) if kerberos else ""
+        cmd = f"{prefix}nxc smb {context.ip} -u {user} "
         if password:
-            cmd += f"-p '{password}' -k "
+            cmd += f"-p '{password}' "
+            if kerberos:
+                cmd += "-k "
         else:
             cmd += f"-p '' "
         cmd += f"--shares"
         # write_log(context.log_file, f"Running: {cmd}", "INFO")
         try:
-            p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=8, check=False)
+            p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=_NXC_TIMEOUT, check=False)
             return p.stdout or ""
         except Exception as e:
             write_log(context.log_file, f"Subprocess exception: {e}", "ERROR")
@@ -66,12 +80,16 @@ def enum_smb_shares(context):
 
         return shares
 
-    # 1) user/pass
+    # 1) user/pass — NTLM first (robust to clock skew, matches a plain
+    #    `nxc smb -u x -p y`), then fall back to Kerberos+faketime for
+    #    NTLM-disabled DCs.  Either way the method is "user/pass"; the task
+    #    commands for that method already use -k + faketime.
     if context.creds_exist():
         user, password = context.get_initial_cred()
         if user is not None:
-            out = run_nxc(user, password)
-            shares = parse_shares(out)
+            shares = parse_shares(run_nxc(user, password))
+            if not shares:
+                shares = parse_shares(run_nxc(user, password, kerberos=True))
             if shares:
                 return shares, "user/pass"
             write_log(context.log_file, "Share enum with provided credentials failed; trying null session", "INFO")

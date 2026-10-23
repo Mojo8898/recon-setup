@@ -41,8 +41,8 @@ def enum_smb_shares(context):
             if kerberos:
                 cmd += "-k "
         else:
-            cmd += f"-p '' "
-        cmd += f"--shares"
+            cmd += "-p '' "
+        cmd += "--shares"
         # write_log(context.log_file, f"Running: {cmd}", "INFO")
         try:
             p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=_SMB_TIMEOUT, check=False)

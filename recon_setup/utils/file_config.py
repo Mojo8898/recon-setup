@@ -1,7 +1,5 @@
-import json
 import subprocess
 import textwrap
-from pathlib import Path
 
 from recon_setup.utils.logger import write_log
 

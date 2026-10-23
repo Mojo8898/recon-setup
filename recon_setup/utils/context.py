@@ -90,7 +90,7 @@ class Context:
 
     def spray_users(self, users):
         target = self.get_target()
-        write_log(self.log_file, f"Spraying users list against known passwords...")
+        write_log(self.log_file, "Spraying users list against known passwords...")
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
             for user in users:
                 tmp.write(f"{user}\n")

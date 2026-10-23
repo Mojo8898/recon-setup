@@ -1,5 +1,4 @@
 """Smoke tests for the recon_setup package."""
-import pytest
 
 
 def test_main_importable():

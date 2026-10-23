@@ -8,8 +8,8 @@ NTHASH_PORTS = {135: "wmi", 389: "ldap", 445: "smb", 1433: "mssql", 3389: "rdp",
 
 def start_spraying(context):
     if not context.creds_exist():
-        write_log(context.log_file, f"No credentials supplied - now watching for new entries in creds.txt and enumerating users once creds are supplied")
-        write_log(context.log_file, f"Add creds to spray against known users: echo <username>:'<password/nthash>' >> creds.txt")
+        write_log(context.log_file, "No credentials supplied - now watching for new entries in creds.txt and enumerating users once creds are supplied")
+        write_log(context.log_file, "Add creds to spray against known users: echo <username>:'<password/nthash>' >> creds.txt")
         watch_creds(context)
     enum_users(context)
     while True:
@@ -45,7 +45,7 @@ def enum_users(context):
                 new_users.append(new_user)
         context.spray_users(new_users)
     else:
-        write_log(context.log_file, f"bloodyAD subprocess returned non-zero code", "ERROR")
+        write_log(context.log_file, "bloodyAD subprocess returned non-zero code", "ERROR")
 
 def spray_password(target, users_file, password, sprayable_ports, log_file):
     valid_protos = {}
@@ -92,15 +92,15 @@ def spray_password(target, users_file, password, sprayable_ports, log_file):
                 if proto_results:
                     valid_protos[proto] = proto_results
         else:
-            write_log(log_file, f"NetExec subprocess returned non-zero code", "ERROR")
+            write_log(log_file, "NetExec subprocess returned non-zero code", "ERROR")
     if valid_protos:
-        write_log(log_file, f"Valid credentials discovered!", "SUCCESS")
+        write_log(log_file, "Valid credentials discovered!", "SUCCESS")
         for proto, results in valid_protos.items():
             for cred, note in results:
                 write_log(log_file, f"- {proto.upper()}\t{cred}", "SUCCESS", note)
     else:
-        write_log(log_file, f"Failed to discover valid credentials :(")
-    write_log(log_file, f"Add creds to spray against known users: echo <username>:'<password/nthash>' >> creds.txt")
+        write_log(log_file, "Failed to discover valid credentials :(")
+    write_log(log_file, "Add creds to spray against known users: echo <username>:'<password/nthash>' >> creds.txt")
 
 def is_ntlm_hash(s: str) -> bool:
     return bool(re.fullmatch(r'[0-9a-fA-F]{32}', s))

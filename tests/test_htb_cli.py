@@ -352,7 +352,7 @@ class TestIpPollNoneThenIp:
 
         # GET sequence: get_machine_id (unreleased) → ip=None → ip=real
         with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time") as mock_time, \
+             patch("recon_setup.utils.htb_cli.time"), \
              patch("recon_setup.utils.htb_cli.Console"):
             mock_req.get.side_effect = [get_machines_resp, ip_null_resp, ip_real_resp]
             mock_req.post.return_value = spawn_ok
@@ -409,7 +409,6 @@ class TestIpPollNoneThenIp:
 
 class TestNoSubprocessDependency:
     def test_subprocess_not_imported(self):
-        import sys
         # subprocess should NOT appear in htb_cli's module imports
         assert "subprocess" not in dir(htb_mod)
 

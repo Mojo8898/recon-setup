@@ -1,7 +1,5 @@
 """Tests for silent runtime bug fixes (task-002)."""
 import subprocess
-import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -15,7 +13,6 @@ class TestVpnPathNoneGuard(unittest.TestCase):
 
     def test_parse_args_without_vpn_flag_does_not_abspath_none(self):
         """When -v is not supplied, vpn_path should remain None, not crash."""
-        import recon_setup.main as m
         import argparse
 
         # Build a minimal namespace that mirrors what argparse produces when
@@ -116,7 +113,8 @@ class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
 
     def _make_handler(self, open_tcp_content="80,443"):
         """Build a NmapLogHandler with a fully mocked context."""
-        import tempfile, os
+        import tempfile
+        import os
         from recon_setup.watchers.nmap_watcher import NmapLogHandler
 
         # Temp file that acts as the tmux pipe file
@@ -149,7 +147,6 @@ class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
     def test_no_double_execution_when_two_already_completed_lines_in_batch(self):
         """When two 'already completed' lines arrive together, handle_task must
         be called exactly once per port (not twice)."""
-        import os
         from unittest.mock import patch
 
         handler, pipe_path, tcp_path = self._make_handler("80,443")
@@ -178,7 +175,6 @@ class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
 
     def test_pipe_pane_called_once_for_already_completed(self):
         """pipe-pane must be sent exactly once when 'already completed' fires."""
-        import os
 
         handler, pipe_path, tcp_path = self._make_handler("22")
         self._pipe = pipe_path
@@ -197,7 +193,6 @@ class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
 
     def test_completed_event_set_after_already_completed_line(self):
         """completed Event must be set after processing 'already completed'."""
-        import os
 
         handler, pipe_path, tcp_path = self._make_handler("22")
         self._pipe = pipe_path
@@ -217,7 +212,6 @@ class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
     def test_break_stops_processing_subsequent_lines(self):
         """After 'already completed', any further lines (e.g. discovered port)
         must NOT be processed."""
-        import os
 
         handler, pipe_path, tcp_path = self._make_handler("22")
         self._pipe = pipe_path

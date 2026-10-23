@@ -4,7 +4,6 @@ Tests inspect cmd.args lists directly — not shell strings — so they are
 decoupled from quoting/joining implementation details.
 """
 
-import pytest
 
 from recon_setup.utils.commands import Command, faketime_prefix
 from recon_setup.utils.builders import (

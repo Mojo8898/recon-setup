@@ -94,9 +94,17 @@ def render_panes(
     """
     commands: list[Command] = []
     for pane in panes:
-        args = [_render(line, params) for line in pane.get("run", [])]
-        if has_cred:
-            args += [_render(line, params) for line in pane.get("run_if_cred", [])]
+        if "cheat" in pane:
+            # Imported lazily: cheat_adapter imports from this module, so a
+            # top-level import here would be circular, and it pulls in aliasr —
+            # only needed when a pane actually references a cheat.
+            from recon_setup.utils.cheat_adapter import render_cheat
+
+            args = render_cheat(pane["cheat"], params)
+        else:
+            args = [_render(line, params) for line in pane.get("run", [])]
+            if has_cred:
+                args += [_render(line, params) for line in pane.get("run_if_cred", [])]
         commands.append(
             Command(
                 args=args,

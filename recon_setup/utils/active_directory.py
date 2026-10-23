@@ -6,15 +6,19 @@ from recon_setup.utils.commands import faketime_prefix
 
 _NEGATIVE = re.compile(r"\[\-\]")
 
-# nxc binds/auths can take >10s against a DC over VPN; the old 8s cap caused
-# premature timeouts (→ false negatives, e.g. a real anonymous bind missed).
-_NXC_TIMEOUT = 20
+# The LDAP anonymous bind can take >10s against a DC over VPN (measured ~14s on
+# a live box), so the old 8s cap timed out and reported no bind.  SMB auth is
+# fast, so it keeps a tighter cap: enum_smb_shares runs up to four probes
+# back-to-back (NTLM + Kerberos fallback + null + guest) synchronously in the
+# 445 handler, so an oversized cap there triples worst-case blocking.
+_LDAP_TIMEOUT = 20
+_SMB_TIMEOUT = 10
 
 
 def anonymous_bind(context):
     cmd = ["nxc", "ldap", context.ip, "-u", "", "-p", ""]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=_NXC_TIMEOUT, check=False)
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=_LDAP_TIMEOUT, check=False)
     except Exception as e:
         write_log(context.log_file, f"NetExec ldap subprocess error: {e}", "ERROR")
         return False
@@ -41,7 +45,7 @@ def enum_smb_shares(context):
         cmd += f"--shares"
         # write_log(context.log_file, f"Running: {cmd}", "INFO")
         try:
-            p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=_NXC_TIMEOUT, check=False)
+            p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=_SMB_TIMEOUT, check=False)
             return p.stdout or ""
         except Exception as e:
             write_log(context.log_file, f"Subprocess exception: {e}", "ERROR")

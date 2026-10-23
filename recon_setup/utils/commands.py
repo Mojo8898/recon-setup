@@ -50,20 +50,3 @@ def faketime_prefix(ip: str) -> str:
         f" | awk '{awk}'"
         f" | date -f - \"+%Y-%m-%d %H:%M:%S\")\" "
     )
-
-
-def with_faketime(ip: str, cmd: Command) -> Command:
-    """Wrap every arg in *cmd* with the faketime/rdate prefix for *ip*.
-
-    Intended for single-invocation Commands (e.g. getTGT.py) where the
-    entire pane needs Kerberos time-sync.  For complex multi-tool panes
-    (e.g. LDAP) apply faketime_prefix() to individual args in the builder.
-
-    Returns a new Command; the original is not modified.
-    """
-    ft = faketime_prefix(ip)
-    return Command(
-        args=[f"{ft}{arg}" for arg in cmd.args],
-        description=cmd.description,
-        delay=cmd.delay,
-    )

@@ -1,4 +1,4 @@
-"""Tests for commands.py (Command / with_faketime) and all builder functions.
+"""Tests for commands.py (Command / faketime_prefix) and all builder functions.
 
 Tests inspect cmd.args lists directly — not shell strings — so they are
 decoupled from quoting/joining implementation details.
@@ -6,7 +6,7 @@ decoupled from quoting/joining implementation details.
 
 import pytest
 
-from recon_setup.utils.commands import Command, faketime_prefix, with_faketime
+from recon_setup.utils.commands import Command, faketime_prefix
 from recon_setup.utils.builders import (
     build_dns_commands,
     build_ftp_commands,
@@ -49,47 +49,11 @@ class TestCommandToShell:
 
 
 # ===========================================================================
-# with_faketime()
+# faketime_prefix()
 # ===========================================================================
 
 
-class TestWithFaketime:
-    def test_wraps_each_arg_with_faketime_prefix(self):
-        cmd = Command(args=["getTGT.py dom/user:pass"], description="TGT", delay=2)
-        wrapped = with_faketime("10.0.0.1", cmd)
-        assert len(wrapped.args) == 1
-        assert wrapped.args[0].startswith("faketime ")
-        assert "getTGT.py" in wrapped.args[0]
-
-    def test_ip_appears_in_faketime_prefix(self):
-        cmd = Command(args=["some-tool --arg"])
-        wrapped = with_faketime("192.168.1.5", cmd)
-        assert "192.168.1.5" in wrapped.args[0]
-
-    def test_rdate_in_faketime_prefix(self):
-        cmd = Command(args=["tool"])
-        wrapped = with_faketime("10.0.0.1", cmd)
-        assert "rdate" in wrapped.args[0]
-
-    def test_preserves_delay_and_description(self):
-        cmd = Command(args=["tool"], description="my desc", delay=15)
-        wrapped = with_faketime("10.0.0.1", cmd)
-        assert wrapped.delay == 15
-        assert wrapped.description == "my desc"
-
-    def test_original_command_unchanged(self):
-        cmd = Command(args=["original-tool"])
-        _ = with_faketime("10.0.0.1", cmd)
-        assert cmd.args == ["original-tool"]
-
-    def test_wraps_multiple_args(self):
-        cmd = Command(args=["tool1 a", "tool2 b"])
-        wrapped = with_faketime("10.0.0.1", cmd)
-        assert len(wrapped.args) == 2
-        assert all("faketime " in a for a in wrapped.args)
-        assert "tool1 a" in wrapped.args[0]
-        assert "tool2 b" in wrapped.args[1]
-
+class TestFaketimePrefix:
     def test_faketime_prefix_standalone(self):
         prefix = faketime_prefix("10.0.0.2")
         assert "faketime" in prefix

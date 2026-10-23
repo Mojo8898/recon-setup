@@ -16,6 +16,18 @@ dependencies = [
 [project.scripts]
 recon-setup = "recon_setup.main:main"
 
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# libtmux ships a pytest plugin (auto-loaded via entry points) whose fixtures
+# carry marks, which pytest >= 9 rejects as an error. We don't use its
+# fixtures, so disable the plugin rather than cap pytest to < 9.
+addopts = "-p no:libtmux"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -10,7 +10,7 @@ None when share enumeration was skipped / failed.
 
 from __future__ import annotations
 
-from recon_setup.utils.commands import Command, faketime_prefix, with_faketime
+from recon_setup.utils.commands import Command, faketime_prefix
 from recon_setup.utils.task_spec import load_spec, render_panes
 
 # Shares that are always present on Windows and uninteresting to spider.
@@ -63,64 +63,9 @@ def build_http_commands(ip: str, fqdn: str) -> list[Command]:
     *fqdn* is the resolved target string from context.get_target() — may be
     ``hostname.domain``, ``domain``, or ``ip`` when no hostname/domain is
     known.  Vhost fuzzing headers use *fqdn* in all cases (preserving the
-    original handler behaviour).
+    original handler behaviour).  Command text lives in tasks.yaml (``http``).
     """
-    pane1 = Command(
-        args=[
-            (
-                'pgrep -fi "burpsuite" > /dev/null 2>&1'
-                ' || { BurpSuitePro &>/dev/null & } 2>/dev/null'
-                ' || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null'
-                ' || { burpsuite &>/dev/null & } 2>/dev/null'
-            ),
-            f"firefox 'http://{fqdn}' &> /dev/null & disown",
-            (
-                f"ffuf -w /usr/share/seclists/Discovery/DNS/services-names.txt"
-                f" -u http://{fqdn} -H 'Host: FUZZ.{fqdn}' -ac -c"
-            ),
-            (
-                f"ffuf -w /usr/share/seclists/Discovery/DNS/"
-                f"subdomains-top1million-5000.txt"
-                f" -u http://{fqdn} -H 'Host: FUZZ.{fqdn}' -ac -c"
-            ),
-            (
-                f"ffuf -w /usr/share/seclists/Discovery/Web-Content/quickhits.txt"
-                f" -u http://{fqdn}/FUZZ -ac -c"
-            ),
-            (
-                f"ffuf -w /usr/share/seclists/Discovery/Web-Content/"
-                f"raft-small-words.txt"
-                f" -u http://{fqdn}/FUZZ -ac -c"
-            ),
-            f"feroxbuster -u http://{fqdn}",
-        ],
-        description="HTTP enumeration",
-        delay=2,
-    )
-    pane2 = Command(
-        args=[
-            (
-                f"wpscan --no-update --url http://{fqdn}"
-                f" --detection-mode aggressive -e ap,u"
-            ),
-            (
-                f"wpscan --no-update --url http://{fqdn}"
-                f" --detection-mode aggressive -e ap,u"
-                f" --plugins-detection aggressive -o wpscan_long.out"
-            ),
-        ],
-        description="WordPress scan",
-        delay=2,
-    )
-    pane3 = Command(
-        args=[
-            f"sleep 30",
-            f"nuclei -u {ip} -severity critical,high,medium -c 10",
-        ],
-        description="Nuclei scan",
-        delay=2,
-    )
-    return [pane1, pane2, pane3]
+    return render_panes(load_spec()["http"]["panes"], {"ip": ip, "fqdn": fqdn})
 
 
 # ---------------------------------------------------------------------------
@@ -141,27 +86,14 @@ def build_kerberos_commands(
     if not domain:
         return []
 
+    spec = load_spec()["kerberos"]
+    params: dict = {"ip": ip, "domain": domain, "ft": faketime_prefix(ip)}
+
     cmds: list[Command] = []
-
     if cred:
-        user, password = cred
-        tgt = Command(
-            args=[f"getTGT.py {domain}/'{user}':'{password}'"],
-            description="Get TGT",
-            delay=2,
-        )
-        cmds.append(with_faketime(ip, tgt))
-
-    cmds.append(
-        Command(
-            args=[
-                f"kerbrute userenum -d {domain} --dc {ip}"
-                f" /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt"
-            ],
-            description="Kerbrute user enumeration",
-            delay=20,
-        )
-    )
+        params["user"], params["password"] = cred
+        cmds += render_panes([spec["tgt"]], params)
+    cmds += render_panes([spec["userenum"]], params)
     return cmds
 
 
@@ -171,17 +103,8 @@ def build_kerberos_commands(
 
 
 def build_rpc_commands(ip: str) -> list[Command]:
-    """RPC domain info queries — authenticated and null-session."""
-    return [
-        Command(
-            args=[
-                f"echo querydominfo | rpcclient {ip}",
-                f"echo querydominfo | rpcclient -U '' -N {ip}",
-            ],
-            description="RPC query",
-            delay=2,
-        )
-    ]
+    """RPC domain info queries (see tasks.yaml ``rpc``)."""
+    return render_panes(load_spec()["rpc"]["panes"], {"ip": ip})
 
 
 # ---------------------------------------------------------------------------
@@ -234,23 +157,8 @@ def build_ldap_commands(
 
 
 def build_https_commands(fqdn: str) -> list[Command]:
-    """Open browser and inspect HTTPS certificate/headers."""
-    return [
-        Command(
-            args=[
-                (
-                    'pgrep -fi "burpsuite" > /dev/null 2>&1'
-                    ' || { BurpSuitePro &>/dev/null & } 2>/dev/null'
-                    ' || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null'
-                    ' || { burpsuite &>/dev/null & } 2>/dev/null'
-                ),
-                f"firefox 'https://{fqdn}' &> /dev/null & disown",
-                f"curl -Ik https://{fqdn}",
-            ],
-            description="HTTPS inspection",
-            delay=2,
-        )
-    ]
+    """Open browser and inspect HTTPS cert/headers (see tasks.yaml ``https``)."""
+    return render_panes(load_spec()["https"]["panes"], {"fqdn": fqdn})
 
 
 # ---------------------------------------------------------------------------
@@ -315,40 +223,17 @@ def build_mssql_commands(
 ) -> list[Command]:
     """MSSQL enumeration and interactive client.
 
-    Requires credentials; returns three pane Commands.
+    Requires credentials; returns three pane Commands (see tasks.yaml ``mssql``).
     """
-    ft = faketime_prefix(ip)
     user, password = cred
-
-    pane1 = Command(
-        args=[
-            (
-                f"{ft}nxc mssql {ip} -u '{user}' -p '{password}' -k"
-                f" -M enum_impersonate -M enum_links -M enum_logins"
-            ),
-            (
-                f"nxc mssql {ip} -u '{user}' -p '{password}' --local-auth"
-                f" -M enum_impersonate -M enum_links -M enum_logins"
-            ),
-            (
-                f"nxc mssql {ip} -u '{user}' -p '{password}' -d ."
-                f" -M enum_impersonate -M enum_links -M enum_logins"
-            ),
-        ],
-        description="MSSQL enumeration",
-        delay=7,
-    )
-    pane2 = Command(
-        args=[f"mssqlclient.py {domain}/'{user}':'{password}'@{ip}"],
-        description="mssqlclient",
-        delay=2,
-    )
-    pane3 = Command(
-        args=[f"mssqlclient.py {domain}/'{user}':'{password}'@{ip} -windows-auth"],
-        description="mssqlclient (Windows auth)",
-        delay=2,
-    )
-    return [pane1, pane2, pane3]
+    params = {
+        "ip": ip,
+        "domain": domain,
+        "user": user,
+        "password": password,
+        "ft": faketime_prefix(ip),
+    }
+    return render_panes(load_spec()["mssql"]["panes"], params)
 
 
 # ---------------------------------------------------------------------------
@@ -357,14 +242,5 @@ def build_mssql_commands(
 
 
 def build_nfs_commands(ip: str) -> list[Command]:
-    """NFS share enumeration."""
-    return [
-        Command(
-            args=[
-                f"showmount -e {ip}",
-                f"nxc nfs {ip} --enum-shares",
-            ],
-            description="NFS enumeration",
-            delay=2,
-        )
-    ]
+    """NFS share enumeration (see tasks.yaml ``nfs``)."""
+    return render_panes(load_spec()["nfs"]["panes"], {"ip": ip})

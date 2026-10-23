@@ -15,6 +15,44 @@
 #   run          command strings always included
 #   run_if_cred  command strings appended only when a credential is present
 
+# ===========================================================================
+# Dispatch metadata (consumed by tasks.handle_task)
+# ===========================================================================
+
+# Credential-spraying targets: port -> protocol label.  Independent of the
+# task handlers below (e.g. 22/3389/5900/5985 have no handler, and 135 sprays
+# as "wmi" while its handler is rpc).
+sprayable_ports:
+  21: ftp
+  22: ssh
+  135: wmi
+  389: ldap
+  445: smb
+  1433: mssql
+  3389: rdp
+  5900: vnc
+  5985: winrm
+
+# Port -> task handler.  "builder" uses the generic path: resolve each arg from
+# the context (see _RESOLVERS in tasks.py), call the builder, run the commands.
+# "custom" names a bespoke handler for protocols with probe/orchestration logic.
+# Adding a simple protocol = add a builder + a tasks.yaml section + one row here.
+handlers:
+  21:   {builder: ftp,      args: [ip, cred]}
+  53:   {builder: dns,      args: [ip, domain]}
+  80:   {builder: http,     args: [ip, fqdn]}
+  88:   {builder: kerberos, args: [ip, domain, cred]}
+  135:  {builder: rpc,      args: [ip]}
+  389:  {custom: ldap}
+  443:  {builder: https,    args: [https_fqdn]}
+  445:  {custom: smb}
+  1433: {builder: mssql,    args: [ip, domain, cred], require_cred: true}
+  2049: {builder: nfs,      args: [ip]}
+
+# ===========================================================================
+# Command definitions
+# ===========================================================================
+
 # ---------------------------------------------------------------------------
 # FTP (port 21) — simple, fully declarative
 # ---------------------------------------------------------------------------
@@ -185,3 +223,102 @@ smb:
         - "cat {{ip}}.json | jq '. | map_values(keys)'"
         - "echo"
         - "smbclientng --host {{ip}} -d {{domain}} -u a -p '' -S <(echo 'shares')"
+
+# ---------------------------------------------------------------------------
+# HTTP (port 80)
+# ---------------------------------------------------------------------------
+http:
+  panes:
+    - description: "HTTP enumeration"
+      delay: 2
+      run:
+        # Block scalar: keeps the literal { } and " in the burpsuite guard
+        # with no escaping. {{ }} placeholders still work inside it.
+        - |-
+          pgrep -fi "burpsuite" > /dev/null 2>&1 || { BurpSuitePro &>/dev/null & } 2>/dev/null || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null || { burpsuite &>/dev/null & } 2>/dev/null
+        - "firefox 'http://{{fqdn}}' &> /dev/null & disown"
+        - "ffuf -w /usr/share/seclists/Discovery/DNS/services-names.txt -u http://{{fqdn}} -H 'Host: FUZZ.{{fqdn}}' -ac -c"
+        - "ffuf -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt -u http://{{fqdn}} -H 'Host: FUZZ.{{fqdn}}' -ac -c"
+        - "ffuf -w /usr/share/seclists/Discovery/Web-Content/quickhits.txt -u http://{{fqdn}}/FUZZ -ac -c"
+        - "ffuf -w /usr/share/seclists/Discovery/Web-Content/raft-small-words.txt -u http://{{fqdn}}/FUZZ -ac -c"
+        - "feroxbuster -u http://{{fqdn}}"
+    - description: "WordPress scan"
+      delay: 2
+      run:
+        - "wpscan --no-update --url http://{{fqdn}} --detection-mode aggressive -e ap,u"
+        - "wpscan --no-update --url http://{{fqdn}} --detection-mode aggressive -e ap,u --plugins-detection aggressive -o wpscan_long.out"
+    - description: "Nuclei scan"
+      delay: 2
+      run:
+        - "sleep 30"
+        - "nuclei -u {{ip}} -severity critical,high,medium -c 10"
+
+# ---------------------------------------------------------------------------
+# HTTPS (port 443)
+# ---------------------------------------------------------------------------
+https:
+  panes:
+    - description: "HTTPS inspection"
+      delay: 2
+      run:
+        - |-
+          pgrep -fi "burpsuite" > /dev/null 2>&1 || { BurpSuitePro &>/dev/null & } 2>/dev/null || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null || { burpsuite &>/dev/null & } 2>/dev/null
+        - "firefox 'https://{{fqdn}}' &> /dev/null & disown"
+        - "curl -Ik https://{{fqdn}}"
+
+# ---------------------------------------------------------------------------
+# Kerberos (port 88) — {{ft}} faketime prefix supplied by the builder
+# ---------------------------------------------------------------------------
+kerberos:
+  tgt:
+    description: "Get TGT"
+    delay: 2
+    run:
+      - "{{ft}}getTGT.py {{domain}}/'{{user}}':'{{password}}'"
+  userenum:
+    description: "Kerbrute user enumeration"
+    delay: 20
+    run:
+      - "kerbrute userenum -d {{domain}} --dc {{ip}} /usr/share/seclists/Usernames/xato-net-10-million-usernames.txt"
+
+# ---------------------------------------------------------------------------
+# RPC (port 135)
+# ---------------------------------------------------------------------------
+rpc:
+  panes:
+    - description: "RPC query"
+      delay: 2
+      run:
+        - "echo querydominfo | rpcclient {{ip}}"
+        - "echo querydominfo | rpcclient -U '' -N {{ip}}"
+
+# ---------------------------------------------------------------------------
+# MSSQL (port 1433) — requires credentials
+# ---------------------------------------------------------------------------
+mssql:
+  panes:
+    - description: "MSSQL enumeration"
+      delay: 7
+      run:
+        - "{{ft}}nxc mssql {{ip}} -u '{{user}}' -p '{{password}}' -k -M enum_impersonate -M enum_links -M enum_logins"
+        - "nxc mssql {{ip}} -u '{{user}}' -p '{{password}}' --local-auth -M enum_impersonate -M enum_links -M enum_logins"
+        - "nxc mssql {{ip}} -u '{{user}}' -p '{{password}}' -d . -M enum_impersonate -M enum_links -M enum_logins"
+    - description: "mssqlclient"
+      delay: 2
+      run:
+        - "mssqlclient.py {{domain}}/'{{user}}':'{{password}}'@{{ip}}"
+    - description: "mssqlclient (Windows auth)"
+      delay: 2
+      run:
+        - "mssqlclient.py {{domain}}/'{{user}}':'{{password}}'@{{ip}} -windows-auth"
+
+# ---------------------------------------------------------------------------
+# NFS (port 2049)
+# ---------------------------------------------------------------------------
+nfs:
+  panes:
+    - description: "NFS enumeration"
+      delay: 2
+      run:
+        - "showmount -e {{ip}}"
+        - "nxc nfs {{ip}} --enum-shares"

@@ -4,6 +4,7 @@ import libtmux
 
 from recon_setup.utils.logger import write_log
 from recon_setup.utils.active_directory import enum_smb_shares, anonymous_bind
+from recon_setup.utils.task_spec import load_spec
 from recon_setup.utils.builders import (
     build_ftp_commands,
     build_dns_commands,
@@ -19,40 +20,16 @@ from recon_setup.utils.builders import (
 )
 
 
-SPRAYABLE_PORTS = {21: "ftp", 22: "ssh", 135: "wmi", 389: "ldap", 445: "smb", 1433: "mssql", 3389: "rdp", 5900: "vnc", 5985: "winrm"}
-
-
-class PortHandlerRegistry:
-    def __init__(self):
-        self.port_handlers = {}
-
-    def register_port_handler(self, *ports):
-        def decorator(func):
-            for port in ports:
-                self.port_handlers.setdefault(port, []).append(func)
-            return func
-        return decorator
-
-
-port_registry = PortHandlerRegistry()
-
-
-def handle_task(context, port):
-    """Main entry point for port handling"""
-    port = int(port)
-    if port in SPRAYABLE_PORTS:
-        context.sprayable_ports[port] = SPRAYABLE_PORTS[port]
-    if port in port_registry.port_handlers:
-        for task_handler in port_registry.port_handlers[port]:
-            task_handler(context)
+# ---------------------------------------------------------------------------
+# Task execution mechanics (tmux panes)
+# ---------------------------------------------------------------------------
 
 
 def run_task(context, command: str, delay: int = 2):
     """Send *command* to the next available task pane after sleeping *delay* s.
 
     The *delay* is supplied by the caller via ``cmd.delay`` on the Command
-    object returned by the builder functions, replacing the old inline
-    'nxc'/'kerbrute' string-based heuristics.
+    object returned by the builder functions.
     """
     target_pane = prepare_task_pane(context)
     if target_pane:
@@ -102,38 +79,45 @@ def _run_commands(context, commands):
         run_task(context, cmd.to_shell(), delay=cmd.delay)
 
 
-@port_registry.register_port_handler(21)
-def ftp_tasks(context):
-    cred = context.get_initial_cred() if context.creds_exist() else None
-    _run_commands(context, build_ftp_commands(ip=context.ip, cred=cred))
+# ---------------------------------------------------------------------------
+# Dispatch: port -> handler, driven by tasks.yaml
+# ---------------------------------------------------------------------------
+
+# Named resolvers that source a builder argument from the Context.  The YAML
+# ``args`` lists reference these by name, so the mapping of port -> builder ->
+# arguments is data while the (logic of) sourcing each argument lives here.
+_RESOLVERS = {
+    "ip": lambda c: c.ip,
+    "domain": lambda c: c.domain,
+    "fqdn": lambda c: c.get_target(),
+    "https_fqdn": lambda c: c.vhost or c.domain or c.ip,
+    "cred": lambda c: c.get_initial_cred() if c.creds_exist() else None,
+}
+
+_BUILDERS = {
+    "ftp": build_ftp_commands,
+    "dns": build_dns_commands,
+    "http": build_http_commands,
+    "kerberos": build_kerberos_commands,
+    "rpc": build_rpc_commands,
+    "https": build_https_commands,
+    "mssql": build_mssql_commands,
+    "nfs": build_nfs_commands,
+}
 
 
-@port_registry.register_port_handler(53)
-def dns_tasks(context):
-    _run_commands(context, build_dns_commands(ip=context.ip, domain=context.domain))
+def _generic_handler(context, cfg):
+    """Run a builder whose args are resolved from the context per *cfg*."""
+    if cfg.get("require_cred") and not context.creds_exist():
+        return
+    builder = _BUILDERS[cfg["builder"]]
+    args = [_RESOLVERS[name](context) for name in cfg.get("args", [])]
+    _run_commands(context, builder(*args))
 
 
-@port_registry.register_port_handler(80)
-def http_tasks(context):
-    fqdn = context.get_target()
-    _run_commands(context, build_http_commands(ip=context.ip, fqdn=fqdn))
+# --- bespoke handlers (probe + orchestration logic that is not data) --------
 
 
-@port_registry.register_port_handler(88)
-def kerberos_tasks(context):
-    cred = context.get_initial_cred() if context.creds_exist() else None
-    _run_commands(
-        context,
-        build_kerberos_commands(ip=context.ip, domain=context.domain, cred=cred),
-    )
-
-
-@port_registry.register_port_handler(135)
-def rpc_tasks(context):
-    _run_commands(context, build_rpc_commands(ip=context.ip))
-
-
-@port_registry.register_port_handler(389)
 def ldap_tasks(context):
     context.is_ad = True
     dc_fqdn = context.get_target()
@@ -155,13 +139,6 @@ def ldap_tasks(context):
     )
 
 
-@port_registry.register_port_handler(443)
-def https_tasks(context):
-    fqdn = context.vhost or context.domain or context.ip
-    _run_commands(context, build_https_commands(fqdn=fqdn))
-
-
-@port_registry.register_port_handler(445)
 def smb_tasks(context):
     dc_fqdn = context.get_target()
     shares, method = enum_smb_shares(context)
@@ -191,16 +168,25 @@ def smb_tasks(context):
     )
 
 
-@port_registry.register_port_handler(1433)
-def mssql_tasks(context):
-    if context.creds_exist():
-        cred = context.get_initial_cred()
-        _run_commands(
-            context,
-            build_mssql_commands(ip=context.ip, domain=context.domain, cred=cred),
-        )
+_CUSTOM_HANDLERS = {
+    "ldap": ldap_tasks,
+    "smb": smb_tasks,
+}
 
 
-@port_registry.register_port_handler(2049)
-def nfs_tasks(context):
-    _run_commands(context, build_nfs_commands(ip=context.ip))
+def handle_task(context, port):
+    """Main entry point for port handling — dispatch is driven by tasks.yaml."""
+    port = int(port)
+    spec = load_spec()
+
+    spray = spec.get("sprayable_ports", {})
+    if port in spray:
+        context.sprayable_ports[port] = spray[port]
+
+    cfg = spec.get("handlers", {}).get(port)
+    if not cfg:
+        return
+    if "custom" in cfg:
+        _CUSTOM_HANDLERS[cfg["custom"]](context)
+    else:
+        _generic_handler(context, cfg)

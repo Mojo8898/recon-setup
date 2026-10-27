@@ -7,7 +7,7 @@ dependencies = [
     # Source of truth for command text: recon-setup pulls `cheat:` panes from
     # aliasr's markdown cheats at runtime (only its stdlib-only `core` layer is
     # imported).  aliasr itself needs >=3.11, hence the floor above.
-    "aliasr>=1.0.8",
+    "aliasr>=1.1.5",
     "impacket",
     "libtmux==0.53.1",
     "pyyaml",

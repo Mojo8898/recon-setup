@@ -11,7 +11,7 @@ from time import sleep
 
 from recon_setup.utils.context import Context
 from recon_setup.utils.htb_cli import spawn_machine
-from recon_setup.utils.scan import SCAN_COMPLETE, build_scan_command, detect_lhost
+from recon_setup.utils.scan import SCAN_COMPLETE_CMD, build_scan_command, detect_lhost
 from recon_setup.watchers.nmap_watcher import watch_nmap
 
 def set_death_signal(sig=signal.SIGHUP):
@@ -60,7 +60,7 @@ def start_scan(nmap_pane, ip, lhost, interface, *, announce_complete):
         nmap_pane.send_keys(f"echo 'recon-setup: failed to build scan command: {e}'")
         return None
     if announce_complete:
-        scan_cmd = f"{scan_cmd} ; echo {SCAN_COMPLETE}"
+        scan_cmd = f"{scan_cmd} ; {SCAN_COMPLETE_CMD}"
     nmap_pane.send_keys(scan_cmd)
     return resolved
 

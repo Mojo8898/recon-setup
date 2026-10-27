@@ -100,7 +100,9 @@ def render_panes(
             # only needed when a pane actually references a cheat.
             from recon_setup.utils.cheat_adapter import render_cheat
 
-            args = render_cheat(pane["cheat"], params)
+            # render_cheat returns one assembled (arun-chained) command string;
+            # a pane runs it as a single send_keys.
+            args = [render_cheat(pane["cheat"], params)]
         else:
             args = [_render(line, params) for line in pane.get("run", [])]
             if has_cred:

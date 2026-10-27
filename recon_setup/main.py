@@ -11,6 +11,7 @@ from time import sleep
 
 from recon_setup.utils.context import Context
 from recon_setup.utils.htb_cli import spawn_machine
+from recon_setup.utils.scan import SCAN_COMPLETE, build_scan_command, detect_lhost
 from recon_setup.watchers.nmap_watcher import watch_nmap
 
 def set_death_signal(sig=signal.SIGHUP):
@@ -35,6 +36,35 @@ def verify_connection(ip):
         sleep(0.5)
     sleep(1)
 
+def start_scan(nmap_pane, ip, lhost, interface, *, announce_complete):
+    """Build the aliasr port-scan cheat and send it to the nmap pane.
+
+    Resolves the source IP (explicit ``lhost`` else auto-detected from
+    ``interface``), renders the cheat via the adapter, and (when
+    *announce_complete*) appends the sentinel the watcher waits on.  Returns the
+    resolved lhost, or ``None`` if the scan could not be started (an error is
+    shown in the pane instead).
+    """
+    from recon_setup.utils.task_spec import TaskSpecError
+
+    resolved = lhost or detect_lhost(interface)
+    if not resolved:
+        nmap_pane.send_keys(
+            f"echo 'recon-setup: could not determine a source IP for {interface}; "
+            "rerun with --lhost <ip>'"
+        )
+        return None
+    try:
+        scan_cmd = build_scan_command(ip, resolved, interface=interface)
+    except TaskSpecError as e:
+        nmap_pane.send_keys(f"echo 'recon-setup: failed to build scan command: {e}'")
+        return None
+    if announce_complete:
+        scan_cmd = f"{scan_cmd} ; echo {SCAN_COMPLETE}"
+    nmap_pane.send_keys(scan_cmd)
+    return resolved
+
+
 def main():
     # Initialize parser
     parser = argparse.ArgumentParser(description="Automate the setup and enumeration process for offensive security labs.")
@@ -45,6 +75,8 @@ def main():
     session_group.add_argument("-v", "--vpn_path", type=str, help="Path of your VPN file")
     session_group.add_argument("-s", "--session_path", type=str, default="/workspace/machines", help="Path to where the session will be created (default: /workspace/machines)")
     session_group.add_argument("-i", "--ip", type=str, help="IP address of the target machine")
+    session_group.add_argument("--interface", type=str, default="tun0", help="VPN interface the scan sources from (default: tun0)")
+    session_group.add_argument("--lhost", type=str, help="Source IP for the port scan (default: auto-detected from --interface)")
 
     # Initialize HTB CLI arguments
     htb_cli_group = parser.add_argument_group("HTB CLI Arguments", "Arguments related to HTB CLI functionality")
@@ -72,9 +104,10 @@ def main():
     user = args.username
     password = args.password
     debug = args.debug
+    interface = args.interface
+    lhost = args.lhost
 
     # Define file paths
-    scan_script_file = "/opt/scripts/scan_machine.py"
     target_dir = os.path.join(session_path, session_name)
     nmap_dir = os.path.join(target_dir, "nmap")
     log_dir = os.path.join(target_dir, "logs")
@@ -83,11 +116,6 @@ def main():
     debug_file = os.path.join(log_dir, "debug.log")
     users_file = os.path.join(target_dir, "valid_users.txt")
     creds_file = os.path.join(target_dir, "creds.txt")
-
-    # Check for nmap wrapper script
-    if not os.path.isfile(scan_script_file):
-        print(f"Error: Required nmap wrapper script not found at {scan_script_file}", file=sys.stderr)
-        sys.exit(1)
 
     # Initialize HTB machine if relevant arguments are included
     if spawn:
@@ -173,10 +201,10 @@ def main():
             # Initialize nmap scanning and automation
             os.remove(tmux_pipe_file)
             nmap_pane.cmd("pipe-pane", f"cat >> {tmux_pipe_file}")
-            nmap_pane.send_keys(f"{scan_script_file} {ip}")
-            watch_nmap(context)
+            if start_scan(nmap_pane, ip, lhost, interface, announce_complete=True):
+                watch_nmap(context)
         elif ip:
-            nmap_pane.send_keys(f"{scan_script_file} {ip}")
+            start_scan(nmap_pane, ip, lhost, interface, announce_complete=False)
         os._exit(0)
     else:
         os.execvp("tmux", ["tmux", "attach-session", "-t", session_name])

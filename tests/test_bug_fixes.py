@@ -1,5 +1,7 @@
 """Tests for silent runtime bug fixes (task-002)."""
+import os
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -104,139 +106,96 @@ class TestEnumUsersResultNameError(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Bug 3: Double task execution in NmapLogHandler.on_modified (task-005)
+# NmapLogHandler parses the aliasr "port scan all in one" cheat output
+# (naabu <ip>:<port> for TCP, nmap "Discovered open port" for UDP), dedups
+# ports, and completes on the RECON_SCAN_COMPLETE sentinel.
 # ---------------------------------------------------------------------------
 
-class TestNmapLogHandlerDoubleExecution(unittest.TestCase):
-    """NmapLogHandler must not fire handle_task twice when both 'already
-    completed' lines land in the same on_modified batch."""
+class TestNmapLogHandlerCheatFormat(unittest.TestCase):
+    IP = "10.129.78.184"
 
-    def _make_handler(self, open_tcp_content="80,443"):
-        """Build a NmapLogHandler with a fully mocked context."""
-        import tempfile
-        import os
+    def _handler(self):
         from recon_setup.watchers.nmap_watcher import NmapLogHandler
 
-        # Temp file that acts as the tmux pipe file
-        tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.log', delete=False)
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False)
         tmp.close()
-
+        self._pipe = tmp.name
         ctx = MagicMock()
         ctx.tmux_pipe_file = tmp.name
-        ctx.nmap_dir = os.path.dirname(tmp.name)
-
-        # Write a fake open_tcp.txt next to the pipe file
-        open_tcp = os.path.join(ctx.nmap_dir, "open_tcp.txt")
-        with open(open_tcp, 'w') as f:
-            f.write(open_tcp_content)
-
-        handler = NmapLogHandler(ctx)
-        return handler, tmp.name, open_tcp
+        ctx.ip = self.IP
+        return NmapLogHandler(ctx), tmp.name
 
     def tearDown(self):
-        import os
-        # Best-effort cleanup
-        for attr in ('_pipe', '_tcp'):
-            path = getattr(self, attr, None)
-            if path and os.path.exists(path):
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+        path = getattr(self, "_pipe", None)
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
-    def test_no_double_execution_when_two_already_completed_lines_in_batch(self):
-        """When two 'already completed' lines arrive together, handle_task must
-        be called exactly once per port (not twice)."""
-        from unittest.mock import patch
+    def _feed(self, handler, pipe, text, *, append=False):
+        """Write *text* to the pipe and run one on_modified; return dispatched ports."""
+        with open(pipe, "a" if append else "w") as f:
+            f.write(text)
+        event = MagicMock()
+        event.src_path = pipe
+        ports = []
+        with patch("recon_setup.watchers.nmap_watcher.handle_task",
+                   side_effect=lambda ctx, port: ports.append(port)):
+            handler.on_modified(event)
+        return ports
 
-        handler, pipe_path, tcp_path = self._make_handler("80,443")
-        self._pipe = pipe_path
-        self._tcp = tcp_path
+    def test_naabu_tcp_ports_dispatched(self):
+        h, pipe = self._handler()
+        ports = self._feed(h, pipe, f"{self.IP}:445\n{self.IP}:53\n")
+        self.assertEqual(ports, ["445", "53"])
 
-        # Write two "already completed" lines to the pipe file
-        two_lines = (
-            "Targeted TCP scan already completed\n"
-            "UDP scan already completed\n"
+    def test_udp_discovered_port_dispatched(self):
+        h, pipe = self._handler()
+        ports = self._feed(h, pipe, f"Discovered open port 123/udp on {self.IP}\n")
+        self.assertEqual(ports, ["123"])
+
+    def test_port_dispatched_once_across_tcp_and_udp(self):
+        h, pipe = self._handler()
+        ports = self._feed(
+            h, pipe,
+            f"{self.IP}:53\nDiscovered open port 53/udp on {self.IP}\n",
         )
-        with open(pipe_path, 'w') as f:
-            f.write(two_lines)
+        self.assertEqual(ports, ["53"])
 
-        event = MagicMock()
-        event.src_path = pipe_path
+    def test_service_detail_and_foreign_ip_lines_ignored(self):
+        h, pipe = self._handler()
+        ports = self._feed(
+            h, pipe,
+            f"  445/tcp (microsoft-ds)\n10.10.10.99:8080\n{self.IP}:445\n",
+        )
+        self.assertEqual(ports, ["445"])
 
-        called_ports = []
-        with patch("recon_setup.watchers.nmap_watcher.handle_task",
-                   side_effect=lambda ctx, port: called_ports.append(port)):
-            handler.on_modified(event)
+    def test_sentinel_stops_pipe_and_sets_completed(self):
+        from recon_setup.utils.scan import SCAN_COMPLETE
 
-        # Each port must appear exactly once
-        self.assertEqual(sorted(called_ports), ["443", "80"],
-                         f"Expected each port once, got: {called_ports}")
+        h, pipe = self._handler()
+        self.assertFalse(h.completed.is_set())
+        ports = self._feed(h, pipe, f"{self.IP}:80\n{SCAN_COMPLETE}\n")
+        self.assertIn("80", ports)
+        self.assertTrue(h.completed.is_set())
+        h.context.nmap_pane.cmd.assert_called_once_with("pipe-pane")
 
-    def test_pipe_pane_called_once_for_already_completed(self):
-        """pipe-pane must be sent exactly once when 'already completed' fires."""
+    def test_lines_after_sentinel_ignored(self):
+        from recon_setup.utils.scan import SCAN_COMPLETE
 
-        handler, pipe_path, tcp_path = self._make_handler("22")
-        self._pipe = pipe_path
-        self._tcp = tcp_path
+        h, pipe = self._handler()
+        ports = self._feed(h, pipe, f"{SCAN_COMPLETE}\n{self.IP}:9999\n")
+        self.assertNotIn("9999", ports)
+        self.assertTrue(h.completed.is_set())
 
-        with open(pipe_path, 'w') as f:
-            f.write("Targeted TCP scan already completed\n")
-
-        event = MagicMock()
-        event.src_path = pipe_path
-
-        with patch("recon_setup.watchers.nmap_watcher.handle_task"):
-            handler.on_modified(event)
-
-        handler.context.nmap_pane.cmd.assert_called_once_with("pipe-pane")
-
-    def test_completed_event_set_after_already_completed_line(self):
-        """completed Event must be set after processing 'already completed'."""
-
-        handler, pipe_path, tcp_path = self._make_handler("22")
-        self._pipe = pipe_path
-        self._tcp = tcp_path
-
-        with open(pipe_path, 'w') as f:
-            f.write("Targeted TCP scan already completed\n")
-
-        event = MagicMock()
-        event.src_path = pipe_path
-
-        self.assertFalse(handler.completed.is_set())
-        with patch("recon_setup.watchers.nmap_watcher.handle_task"):
-            handler.on_modified(event)
-        self.assertTrue(handler.completed.is_set())
-
-    def test_break_stops_processing_subsequent_lines(self):
-        """After 'already completed', any further lines (e.g. discovered port)
-        must NOT be processed."""
-
-        handler, pipe_path, tcp_path = self._make_handler("22")
-        self._pipe = pipe_path
-        self._tcp = tcp_path
-
-        # "already completed" appears first; a spurious "Discovered open port"
-        # follows — it must be ignored due to the break.
-        with open(pipe_path, 'w') as f:
-            f.write(
-                "Targeted TCP scan already completed\n"
-                "Discovered open port 9999/tcp on 10.10.10.1\n"
-            )
-
-        event = MagicMock()
-        event.src_path = pipe_path
-
-        called_ports = []
-        with patch("recon_setup.watchers.nmap_watcher.handle_task",
-                   side_effect=lambda ctx, port: called_ports.append(port)):
-            handler.on_modified(event)
-
-        # Only port 22 (from open_tcp.txt) should be handled; 9999 must not appear
-        self.assertNotIn("9999", called_ports,
-                         "Port 9999 should have been skipped due to break")
-        self.assertIn("22", called_ports)
+    def test_dedup_across_batches(self):
+        h, pipe = self._handler()
+        first = self._feed(h, pipe, f"{self.IP}:445\n")
+        # naabu's second (10001-65535) sweep can re-emit an already-seen port.
+        second = self._feed(h, pipe, f"{self.IP}:445\n", append=True)
+        self.assertEqual(first, ["445"])
+        self.assertEqual(second, [])
 
 
 if __name__ == "__main__":

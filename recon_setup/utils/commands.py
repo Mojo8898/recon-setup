@@ -46,7 +46,7 @@ def faketime_prefix(ip: str) -> str:
     """
     awk = "{print $2, $3, $4}"
     return (
-        f"faketime \"$(rdate -n {ip} -p"
+        f'faketime "$(rdate -n {ip} -p'
         f" | awk '{awk}'"
-        f" | date -f - \"+%Y-%m-%d %H:%M:%S\")\" "
+        f' | date -f - "+%Y-%m-%d %H:%M:%S")" '
     )

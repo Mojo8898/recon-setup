@@ -4,8 +4,6 @@ Tests inspect cmd.args lists directly — not shell strings — so they are
 decoupled from quoting/joining implementation details.
 """
 
-
-from recon_setup.utils.commands import Command, faketime_prefix
 from recon_setup.utils.builders import (
     build_dns_commands,
     build_ftp_commands,
@@ -18,7 +16,7 @@ from recon_setup.utils.builders import (
     build_rpc_commands,
     build_smb_commands,
 )
-
+from recon_setup.utils.commands import Command, faketime_prefix
 
 # ===========================================================================
 # Command.to_shell()
@@ -177,15 +175,17 @@ class TestBuildHttpCommands:
         cmds = build_http_commands(ip="10.0.0.1", fqdn="dc.example.com")
         assert cmds[0].args[0] == (
             'pgrep -fi "burpsuite" > /dev/null 2>&1'
-            ' || { BurpSuitePro &>/dev/null & } 2>/dev/null'
-            ' || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null'
-            ' || { burpsuite &>/dev/null & } 2>/dev/null'
+            " || { BurpSuitePro &>/dev/null & } 2>/dev/null"
+            " || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null"
+            " || { burpsuite &>/dev/null & } 2>/dev/null"
         )
 
     def test_pane1_burpsuite_guard_before_firefox(self):
         cmds = build_http_commands(ip="10.0.0.1", fqdn="dc.example.com")
         args = cmds[0].args
-        idx_guard = next(i for i, a in enumerate(args) if "burpsuite" in a and "pgrep" in a)
+        idx_guard = next(
+            i for i, a in enumerate(args) if "burpsuite" in a and "pgrep" in a
+        )
         idx_firefox = next(i for i, a in enumerate(args) if "firefox" in a)
         assert idx_guard == 0
         assert idx_guard < idx_firefox
@@ -300,9 +300,7 @@ class TestBuildLdapCommands:
         cmds = build_ldap_commands(
             ip="10.0.0.1", domain="dom.local", dc_fqdn="dc.dom.local", cred=("u", "p")
         )
-        module_arg = next(
-            a for a in cmds[0].args if "nxc ldap" in a and "-M maq" in a
-        )
+        module_arg = next(a for a in cmds[0].args if "nxc ldap" in a and "-M maq" in a)
         for module in [
             "-M badsuccessor",
             "-M dns-nonsecure",
@@ -325,8 +323,12 @@ class TestBuildLdapCommands:
             ip="10.0.0.1", domain="dom.local", dc_fqdn="dc.dom.local", cred=("u", "p")
         )
         args = cmds[0].args
-        idx_13100 = next(i for i, a in enumerate(args) if "hashcat" in a and "13100" in a)
-        idx_19700 = next(i for i, a in enumerate(args) if "hashcat" in a and "19700" in a)
+        idx_13100 = next(
+            i for i, a in enumerate(args) if "hashcat" in a and "13100" in a
+        )
+        idx_19700 = next(
+            i for i, a in enumerate(args) if "hashcat" in a and "19700" in a
+        )
         assert idx_19700 == idx_13100 + 1
 
     def test_pane3_has_bloodhound(self):
@@ -342,7 +344,9 @@ class TestBuildLdapCommands:
         args = cmds[2].args
         idx_cli_up = next(i for i, a in enumerate(args) if a == "bloodhound-cli up")
         idx_echo = next(i for i, a in enumerate(args) if a == "echo")
-        idx_bloodhound = next(i for i, a in enumerate(args) if "bloodhound-ce-python" in a)
+        idx_bloodhound = next(
+            i for i, a in enumerate(args) if "bloodhound-ce-python" in a
+        )
         # bloodhound-cli up (0) → sleep 1 (1) → echo (2) → bloodhound-ce-python (3)
         assert idx_cli_up == 0
         assert idx_echo == 2
@@ -400,8 +404,12 @@ class TestBuildLdapCommands:
             ip="10.0.0.1", domain="dom.local", dc_fqdn="dc.dom.local", anon_bind=True
         )
         args = cmds[0].args
-        idx_13100 = next(i for i, a in enumerate(args) if "hashcat" in a and "13100" in a)
-        idx_19700 = next(i for i, a in enumerate(args) if "hashcat" in a and "19700" in a)
+        idx_13100 = next(
+            i for i, a in enumerate(args) if "hashcat" in a and "13100" in a
+        )
+        idx_19700 = next(
+            i for i, a in enumerate(args) if "hashcat" in a and "19700" in a
+        )
         assert idx_19700 == idx_13100 + 1
 
     def test_anon_pane2_has_powerview(self):
@@ -453,15 +461,17 @@ class TestBuildHttpsCommands:
         cmds = build_https_commands(fqdn="dc.dom.local")
         assert cmds[0].args[0] == (
             'pgrep -fi "burpsuite" > /dev/null 2>&1'
-            ' || { BurpSuitePro &>/dev/null & } 2>/dev/null'
-            ' || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null'
-            ' || { burpsuite &>/dev/null & } 2>/dev/null'
+            " || { BurpSuitePro &>/dev/null & } 2>/dev/null"
+            " || { BurpSuiteCommunity &>/dev/null & } 2>/dev/null"
+            " || { burpsuite &>/dev/null & } 2>/dev/null"
         )
 
     def test_burpsuite_guard_before_firefox(self):
         cmds = build_https_commands(fqdn="dc.dom.local")
         args = cmds[0].args
-        idx_guard = next(i for i, a in enumerate(args) if "burpsuite" in a and "pgrep" in a)
+        idx_guard = next(
+            i for i, a in enumerate(args) if "burpsuite" in a and "pgrep" in a
+        )
         idx_firefox = next(i for i, a in enumerate(args) if "firefox" in a)
         assert idx_guard == 0
         assert idx_guard < idx_firefox
@@ -720,30 +730,22 @@ class TestBuildMssqlCommands:
         assert any("nxc mssql" in a for a in cmds[0].args)
 
     def test_pane1_has_kerberos_local_and_domain_variants(self):
-        cmds = build_mssql_commands(
-            ip="10.0.0.1", domain="dom.local", cred=("sa", "p")
-        )
+        cmds = build_mssql_commands(ip="10.0.0.1", domain="dom.local", cred=("sa", "p"))
         assert any("-k" in a for a in cmds[0].args)
         assert any("--local-auth" in a for a in cmds[0].args)
         assert any("-d ." in a for a in cmds[0].args)
 
     def test_pane1_has_faketime_on_kerberos_variant(self):
-        cmds = build_mssql_commands(
-            ip="10.0.0.1", domain="dom.local", cred=("sa", "p")
-        )
+        cmds = build_mssql_commands(ip="10.0.0.1", domain="dom.local", cred=("sa", "p"))
         assert any("faketime" in a and "nxc mssql" in a for a in cmds[0].args)
 
     def test_pane2_is_mssqlclient(self):
-        cmds = build_mssql_commands(
-            ip="10.0.0.1", domain="dom.local", cred=("sa", "p")
-        )
+        cmds = build_mssql_commands(ip="10.0.0.1", domain="dom.local", cred=("sa", "p"))
         assert any("mssqlclient.py" in a for a in cmds[1].args)
         assert not any("-windows-auth" in a for a in cmds[1].args)
 
     def test_pane3_is_mssqlclient_windows_auth(self):
-        cmds = build_mssql_commands(
-            ip="10.0.0.1", domain="dom.local", cred=("sa", "p")
-        )
+        cmds = build_mssql_commands(ip="10.0.0.1", domain="dom.local", cred=("sa", "p"))
         assert any("mssqlclient.py" in a and "-windows-auth" in a for a in cmds[2].args)
 
     def test_creds_in_mssqlclient_args(self):

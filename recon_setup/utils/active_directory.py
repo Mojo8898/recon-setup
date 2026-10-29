@@ -1,8 +1,8 @@
 import re
 import subprocess
 
-from recon_setup.utils.logger import write_log
 from recon_setup.utils.commands import faketime_prefix
+from recon_setup.utils.logger import write_log
 
 _NEGATIVE = re.compile(r"\[\-\]")
 
@@ -18,7 +18,9 @@ _SMB_TIMEOUT = 10
 def anonymous_bind(context):
     cmd = ["nxc", "ldap", context.ip, "-u", "", "-p", ""]
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=_LDAP_TIMEOUT, check=False)
+        p = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=_LDAP_TIMEOUT, check=False
+        )
     except Exception as e:
         write_log(context.log_file, f"NetExec ldap subprocess error: {e}", "ERROR")
         return False
@@ -45,7 +47,14 @@ def enum_smb_shares(context):
         cmd += "--shares"
         # write_log(context.log_file, f"Running: {cmd}", "INFO")
         try:
-            p = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=_SMB_TIMEOUT, check=False)
+            p = subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=_SMB_TIMEOUT,
+                check=False,
+            )
             return p.stdout or ""
         except Exception as e:
             write_log(context.log_file, f"Subprocess exception: {e}", "ERROR")
@@ -96,20 +105,32 @@ def enum_smb_shares(context):
                 shares = parse_shares(run_nxc(user, password, kerberos=True))
             if shares:
                 return shares, "user/pass"
-            write_log(context.log_file, "Share enum with provided credentials failed; trying null session", "INFO")
+            write_log(
+                context.log_file,
+                "Share enum with provided credentials failed; trying null session",
+                "INFO",
+            )
 
     # 2) null
     out = run_nxc("''", "")
     shares = parse_shares(out)
     if shares:
-        write_log(context.log_file, "Null authentication is enabled for reading shares", "SUCCESS")
+        write_log(
+            context.log_file,
+            "Null authentication is enabled for reading shares",
+            "SUCCESS",
+        )
         return shares, "null"
 
     # 3) guest
     out = run_nxc("a", "")
     shares = parse_shares(out)
     if shares:
-        write_log(context.log_file, "Guest authentication is enabled for reading shares", "SUCCESS")
+        write_log(
+            context.log_file,
+            "Guest authentication is enabled for reading shares",
+            "SUCCESS",
+        )
         return shares, "guest"
 
     return None, None

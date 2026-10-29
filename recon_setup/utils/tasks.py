@@ -1,24 +1,23 @@
 from time import sleep
 
-import libtmux
+from libtmux.constants import PaneDirection
 
-from recon_setup.utils.logger import write_log
-from recon_setup.utils.active_directory import enum_smb_shares, anonymous_bind
-from recon_setup.utils.task_spec import load_spec
+from recon_setup.utils.active_directory import anonymous_bind, enum_smb_shares
 from recon_setup.utils.builders import (
-    build_ftp_commands,
+    _NON_DEFAULT_SHARES,
     build_dns_commands,
+    build_ftp_commands,
     build_http_commands,
-    build_kerberos_commands,
-    build_rpc_commands,
-    build_ldap_commands,
     build_https_commands,
-    build_smb_commands,
+    build_kerberos_commands,
+    build_ldap_commands,
     build_mssql_commands,
     build_nfs_commands,
-    _NON_DEFAULT_SHARES,
+    build_rpc_commands,
+    build_smb_commands,
 )
-
+from recon_setup.utils.logger import write_log
+from recon_setup.utils.task_spec import load_spec
 
 # ---------------------------------------------------------------------------
 # Task execution mechanics (tmux panes)
@@ -45,25 +44,22 @@ def stage_task(context, command):
 
 
 def prepare_task_pane(context):
-    if (context.current_task_window is None or context.current_task_pane > 5):
+    if context.current_task_window is None or context.current_task_pane > 5:
         # Create a new task window
         window_name = f"tasks{context.task_window_count}"
-        new_window = context.session.new_window(
-            window_name=window_name,
-            attach=False
-        )
+        new_window = context.session.new_window(window_name=window_name, attach=False)
         # Split into 6 panes (5 splits)
         pane = new_window.active_pane
         for _ in range(2):
             pane = pane.split()
-            pane = pane.split(direction=libtmux.pane.PaneDirection.Right)
+            pane = pane.split(direction=PaneDirection.Right)
         pane = pane.split()
-        new_window.select_layout('tiled')
+        new_window.select_layout("tiled")
         # Update session tracking
         context.current_task_window = new_window
         context.task_window_count += 1
         context.current_task_pane = 0
-        sleep(1) # Give panes time to initialize
+        sleep(1)  # Give panes time to initialize
     # Get the next available pane
     panes = context.current_task_window.panes
     if context.current_task_pane < len(panes):

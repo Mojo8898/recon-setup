@@ -1,6 +1,6 @@
 """Unit tests for recon_setup.utils.htb_cli (direct HTB API integration)."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,10 +8,10 @@ import pytest
 import recon_setup.utils.htb_cli as htb_mod
 from recon_setup.utils.htb_cli import RATELIMIT_SLEEP
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def make_response(status_code=200, json_data=None, headers=None):
     """Build a minimal mock requests.Response."""
@@ -39,6 +39,7 @@ def _spawn_ctx():
 # AC #1 — Missing HTB_TOKEN raises EnvironmentError
 # ---------------------------------------------------------------------------
 
+
 class TestMissingToken:
     def test_spawn_machine_raises_environment_error(self, monkeypatch):
         monkeypatch.delenv("HTB_TOKEN", raising=False)
@@ -54,6 +55,7 @@ class TestMissingToken:
 # ---------------------------------------------------------------------------
 # AC #2 — get_machine_id: unreleased-first, active fallback, case-insensitive
 # ---------------------------------------------------------------------------
+
 
 class TestGetMachineId:
     def test_machine_not_found_raises_value_error(self):
@@ -110,38 +112,47 @@ class TestGetMachineId:
 # AC #3 — spawn_machine_api: POST body and return value
 # ---------------------------------------------------------------------------
 
+
 class TestSpawnMachineApi:
     def test_returns_true_on_200(self):
         ok = make_response(status_code=200)
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.post.return_value = ok
-                result = htb_mod.spawn_machine_api(42, "tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.post.return_value = ok
+            result = htb_mod.spawn_machine_api(42, "tok")
         assert result is True
 
     def test_returns_false_on_non_200(self):
         err = make_response(status_code=500)
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.post.return_value = err
-                result = htb_mod.spawn_machine_api(42, "tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.post.return_value = err
+            result = htb_mod.spawn_machine_api(42, "tok")
         assert result is False
 
     def test_post_body_contains_machine_id(self):
         ok = make_response(status_code=200)
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.post.return_value = ok
-                htb_mod.spawn_machine_api(77, "tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.post.return_value = ok
+            htb_mod.spawn_machine_api(77, "tok")
         call_kwargs = mock_req.post.call_args
         assert call_kwargs.kwargs["json"] == {"machine_id": 77}
 
     def test_posts_to_correct_url(self):
         ok = make_response(status_code=200)
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.post.return_value = ok
-                htb_mod.spawn_machine_api(1, "tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.post.return_value = ok
+            htb_mod.spawn_machine_api(1, "tok")
         url = mock_req.post.call_args.args[0]
         assert url.endswith("/api/v4/vm/spawn")
 
@@ -150,43 +161,53 @@ class TestSpawnMachineApi:
 # AC #4 — get_active_ip: returns data.ip or None
 # ---------------------------------------------------------------------------
 
+
 class TestGetActiveIp:
     def test_returns_ip_from_data_key(self):
         resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.get.return_value = resp
-                ip = htb_mod.get_active_ip("tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.get.return_value = resp
+            ip = htb_mod.get_active_ip("tok")
         assert ip == "10.10.11.100"
 
     def test_returns_none_when_ip_is_null(self):
         resp = make_response(json_data={"info": {"ip": None}})
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.get.return_value = resp
-                ip = htb_mod.get_active_ip("tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.get.return_value = resp
+            ip = htb_mod.get_active_ip("tok")
         assert ip is None
 
     def test_returns_none_on_non_200(self):
         resp = make_response(status_code=404)
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.get.return_value = resp
-                ip = htb_mod.get_active_ip("tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.get.return_value = resp
+            ip = htb_mod.get_active_ip("tok")
         assert ip is None
 
     def test_returns_ip_from_info_key_fallback(self):
         resp = make_response(json_data={"info": {"ip": "10.10.11.200"}})
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req:
-            with patch("recon_setup.utils.htb_cli.time"):
-                mock_req.get.return_value = resp
-                ip = htb_mod.get_active_ip("tok")
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+        ):
+            mock_req.get.return_value = resp
+            ip = htb_mod.get_active_ip("tok")
         assert ip == "10.10.11.200"
 
 
 # ---------------------------------------------------------------------------
 # AC #7 — Rate-limit check sleeps on x-ratelimit-remaining <= 1
 # ---------------------------------------------------------------------------
+
 
 class TestRatelimitCheck:
     def test_sleeps_when_remaining_is_one(self):
@@ -218,6 +239,7 @@ class TestRatelimitCheck:
 # AC #10 test case: successful non-release spawn
 # ---------------------------------------------------------------------------
 
+
 class TestSuccessfulNonReleaseSpawn:
     def test_returns_ip_after_spawn(self, monkeypatch):
         monkeypatch.setenv("HTB_TOKEN", "fake-token")
@@ -227,9 +249,11 @@ class TestSuccessfulNonReleaseSpawn:
         spawn_ok = make_response(status_code=200)
         ip_resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time"), \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.side_effect = [get_machines_resp, ip_resp]
             mock_req.post.return_value = spawn_ok
             ip = htb_mod.spawn_machine("TestMachine", False)
@@ -244,9 +268,11 @@ class TestSuccessfulNonReleaseSpawn:
         spawn_ok = make_response(status_code=200)
         ip_resp = make_response(json_data={"info": {"ip": "10.10.11.100"}})
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time"), \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.side_effect = [get_machines_resp, ip_resp]
             mock_req.post.return_value = spawn_ok
             htb_mod.spawn_machine("TestMachine", False)
@@ -261,9 +287,11 @@ class TestSuccessfulNonReleaseSpawn:
         get_machines_resp = make_response(json_data=machines)
         spawn_fail = make_response(status_code=500)
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time"), \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.return_value = get_machines_resp
             mock_req.post.return_value = spawn_fail
             ip = htb_mod.spawn_machine("TestMachine", False)
@@ -275,12 +303,13 @@ class TestSuccessfulNonReleaseSpawn:
 # AC #10 test case: new_release retry loop (mocking requests)
 # ---------------------------------------------------------------------------
 
+
 class TestNewReleaseRetryLoop:
     def test_retries_spawn_until_success(self, monkeypatch):
         monkeypatch.setenv("HTB_TOKEN", "fake-token")
 
         # T-2 min before release → wait_seconds = 60s (2*60 - 60)
-        now_before = datetime(2026, 3, 8, 18, 58, 0, tzinfo=timezone.utc)
+        now_before = datetime(2026, 3, 8, 18, 58, 0, tzinfo=UTC)
 
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
@@ -291,10 +320,14 @@ class TestNewReleaseRetryLoop:
         # monotonic calls: window_end=mono[0]+60, then two while-condition checks
         mono_values = [0, 1, 2]
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.get_current_time", return_value=now_before), \
-             patch("recon_setup.utils.htb_cli.time") as mock_time, \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch(
+                "recon_setup.utils.htb_cli.get_current_time", return_value=now_before
+            ),
+            patch("recon_setup.utils.htb_cli.time") as mock_time,
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.side_effect = [get_machines_resp, ip_resp]
             mock_req.post.side_effect = [spawn_fail, spawn_ok]
             mock_time.monotonic.side_effect = mono_values
@@ -306,7 +339,7 @@ class TestNewReleaseRetryLoop:
     def test_returns_none_when_window_expires_without_spawn(self, monkeypatch):
         monkeypatch.setenv("HTB_TOKEN", "fake-token")
 
-        now_before = datetime(2026, 3, 8, 18, 58, 0, tzinfo=timezone.utc)
+        now_before = datetime(2026, 3, 8, 18, 58, 0, tzinfo=UTC)
 
         machines = [{"id": 42, "name": "TestMachine"}]
         get_machines_resp = make_response(json_data=machines)
@@ -315,10 +348,14 @@ class TestNewReleaseRetryLoop:
         # monotonic: window_end=0+60; first while check returns 100 (> 60 → exit immediately)
         mono_values = [0, 100]
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.get_current_time", return_value=now_before), \
-             patch("recon_setup.utils.htb_cli.time") as mock_time, \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch(
+                "recon_setup.utils.htb_cli.get_current_time", return_value=now_before
+            ),
+            patch("recon_setup.utils.htb_cli.time") as mock_time,
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.return_value = get_machines_resp
             mock_req.post.return_value = spawn_fail
             mock_time.monotonic.side_effect = mono_values
@@ -329,16 +366,17 @@ class TestNewReleaseRetryLoop:
 
     def test_spawn_interval_constant_is_correct(self):
         """SPAWN_INTERVAL = 60s / 15 limit * 1.1 buffer = 4.4s"""
-        assert htb_mod.SPAWN_INTERVAL == pytest.approx(4.4)
+        assert pytest.approx(4.4) == htb_mod.SPAWN_INTERVAL
 
     def test_ip_poll_interval_constant_is_correct(self):
         """IP_POLL_INTERVAL = 10s / 15 limit * 1.1 buffer = 0.73s (/api/v4/machine/active)"""
-        assert htb_mod.IP_POLL_INTERVAL == pytest.approx(0.73)
+        assert pytest.approx(0.73) == htb_mod.IP_POLL_INTERVAL
 
 
 # ---------------------------------------------------------------------------
 # AC #10 test case: IP poll returning None then IP
 # ---------------------------------------------------------------------------
+
 
 class TestIpPollNoneThenIp:
     def test_polls_until_ip_is_assigned(self, monkeypatch):
@@ -351,9 +389,11 @@ class TestIpPollNoneThenIp:
         ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.200"}})
 
         # GET sequence: get_machine_id (unreleased) → ip=None → ip=real
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time"), \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.side_effect = [get_machines_resp, ip_null_resp, ip_real_resp]
             mock_req.post.return_value = spawn_ok
             ip = htb_mod.spawn_machine("TestMachine", False)
@@ -369,9 +409,11 @@ class TestIpPollNoneThenIp:
         ip_null_resp = make_response(json_data={"info": {"ip": None}})
         ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.200"}})
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time") as mock_time, \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time") as mock_time,
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             mock_req.get.side_effect = [get_machines_resp, ip_null_resp, ip_real_resp]
             mock_req.post.return_value = spawn_ok
             htb_mod.spawn_machine("TestMachine", False)
@@ -388,13 +430,17 @@ class TestIpPollNoneThenIp:
         null_resp = make_response(json_data={"info": {"ip": None}})
         ip_real_resp = make_response(json_data={"info": {"ip": "10.10.11.50"}})
 
-        with patch("recon_setup.utils.htb_cli.requests") as mock_req, \
-             patch("recon_setup.utils.htb_cli.time"), \
-             patch("recon_setup.utils.htb_cli.Console"):
+        with (
+            patch("recon_setup.utils.htb_cli.requests") as mock_req,
+            patch("recon_setup.utils.htb_cli.time"),
+            patch("recon_setup.utils.htb_cli.Console"),
+        ):
             # Three null polls before a real IP
             mock_req.get.side_effect = [
                 get_machines_resp,
-                null_resp, null_resp, null_resp,
+                null_resp,
+                null_resp,
+                null_resp,
                 ip_real_resp,
             ]
             mock_req.post.return_value = spawn_ok
@@ -406,6 +452,7 @@ class TestIpPollNoneThenIp:
 # ---------------------------------------------------------------------------
 # AC #9 — No subprocess / regex / htb-cli binary imports remain
 # ---------------------------------------------------------------------------
+
 
 class TestNoSubprocessDependency:
     def test_subprocess_not_imported(self):

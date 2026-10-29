@@ -6,7 +6,7 @@ import pytest
 
 import recon_setup.utils.tasks as T
 from recon_setup.utils import builders as B
-from recon_setup.utils.task_spec import spec_get, TaskSpecError
+from recon_setup.utils.task_spec import TaskSpecError, spec_get
 
 
 class Ctx:
@@ -137,7 +137,10 @@ def test_no_unrendered_placeholders():
         B.build_mssql_commands("1.1.1.1", "d.local", ("u", "p")),
         B.build_nfs_commands("1.1.1.1"),
         B.build_smb_commands(
-            "1.1.1.1", "dc.d.local", "d.local", cred=("u", "p"),
+            "1.1.1.1",
+            "dc.d.local",
+            "d.local",
+            cred=("u", "p"),
             shares=[{"name": "X", "access": ["READ"], "remark": ""}],
             share_method="user/pass",
         ),

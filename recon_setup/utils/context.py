@@ -1,17 +1,19 @@
 import os
-import libtmux
 import tempfile
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+
+import libtmux
 
 from recon_setup.utils.file_config import populate_files
 from recon_setup.utils.hostfile import resolve_host
 from recon_setup.utils.logger import write_log
 from recon_setup.utils.spray import spray_password
 
+
 @dataclass
 class Context:
     """Represents the current tmux automation session context"""
+
     session: libtmux.Session
     nmap_pane: libtmux.Pane
     nmap_dir: str
@@ -20,19 +22,22 @@ class Context:
     users_file: str
     creds_file: str
     ip: str
-    _creds: Dict[str, str] = field(default_factory=dict)
+    _creds: dict[str, str] = field(default_factory=dict)
     hostname: str = ""
     domain: str = ""
     vhost: str = ""
     task_window_count: int = 0
-    current_task_window: Optional[libtmux.Window] = None
+    current_task_window: libtmux.Window | None = None
     current_task_pane: int = 0
-    sprayable_ports: Dict[int, str] = field(default_factory=dict)
+    sprayable_ports: dict[int, str] = field(default_factory=dict)
     is_ad: bool = False
 
     def __post_init__(self):
         """Initialize the context class"""
-        self.hostname, self.domain, self.vhost = resolve_host(self.log_file, self.ip)
+        hostname, domain, vhost = resolve_host(self.log_file, self.ip)
+        self.hostname = hostname or ""
+        self.domain = domain or ""
+        self.vhost = vhost or ""
         populate_files(self)
 
     def creds_exist(self):
@@ -42,7 +47,9 @@ class Context:
         try:
             return next(iter(self._creds.items()))
         except Exception as e:
-            write_log(self.log_file, f"Failed to query initial cred due to error: {str(e)}")
+            write_log(
+                self.log_file, f"Failed to query initial cred due to error: {str(e)}"
+            )
             return None
 
     def get_target(self):
@@ -66,7 +73,7 @@ class Context:
         self._creds[user] = password
         write_log(self.log_file, f"Added new user: {user}")
         # Add user to users file
-        with open(self.users_file, "r") as f:
+        with open(self.users_file) as f:
             for line in f:
                 if user in line:
                     return
@@ -76,16 +83,25 @@ class Context:
     def spray_cred(self, user, password=None):
         target = self.get_target()
         if password:
-            write_log(self.log_file, f"Spraying {password} against all available users/protocols...")
-            spray_password(target, self.users_file, password, self.sprayable_ports, self.log_file)
+            write_log(
+                self.log_file,
+                f"Spraying {password} against all available users/protocols...",
+            )
+            spray_password(
+                target, self.users_file, password, self.sprayable_ports, self.log_file
+            )
         else:
-            write_log(self.log_file, f"Spraying existing passwords against user: \"{user}\"...")
+            write_log(
+                self.log_file, f'Spraying existing passwords against user: "{user}"...'
+            )
             with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
                 tmp.write(f"{user}\n")
                 tmp_file = tmp.name
             for password in self._creds.values():
                 if password:
-                    spray_password(target, tmp_file, password, self.sprayable_ports, self.log_file)
+                    spray_password(
+                        target, tmp_file, password, self.sprayable_ports, self.log_file
+                    )
             os.remove(tmp_file)
 
     def spray_users(self, users):
@@ -97,5 +113,7 @@ class Context:
             tmp_file = tmp.name
         for password in self._creds.values():
             if password:
-                spray_password(target, tmp_file, password, self.sprayable_ports, self.log_file)
+                spray_password(
+                    target, tmp_file, password, self.sprayable_ports, self.log_file
+                )
         os.remove(tmp_file)

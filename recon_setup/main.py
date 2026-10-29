@@ -2,23 +2,27 @@
 
 import argparse
 import ctypes
-import libtmux
 import os
 import signal
 import subprocess
 import sys
 from time import sleep
 
+import libtmux
+from libtmux.constants import PaneDirection
+
 from recon_setup.utils.context import Context
 from recon_setup.utils.htb_cli import spawn_machine
 from recon_setup.utils.scan import SCAN_COMPLETE_CMD, build_scan_command, detect_lhost
 from recon_setup.watchers.nmap_watcher import watch_nmap
+
 
 def set_death_signal(sig=signal.SIGHUP):
     """Send SIGHUP to the forked process when its parent dies"""
     libc = ctypes.CDLL("libc.so.6")
     PR_SET_PDEATHSIG = 1
     libc.prctl(PR_SET_PDEATHSIG, sig)
+
 
 def verify_connection(ip):
     """Verify connection with target IP."""
@@ -28,13 +32,14 @@ def verify_connection(ip):
             subprocess.check_call(
                 ["ping", "-c1", "-W.5", ip],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
             )
             reachable = True
         except subprocess.CalledProcessError:
             reachable = False
         sleep(0.5)
     sleep(1)
+
 
 def start_scan(nmap_pane, ip, lhost, interface, *, announce_complete):
     """Build the aliasr port-scan cheat and send it to the nmap pane.
@@ -67,28 +72,83 @@ def start_scan(nmap_pane, ip, lhost, interface, *, announce_complete):
 
 def main():
     # Initialize parser
-    parser = argparse.ArgumentParser(description="Automate the setup and enumeration process for offensive security labs.")
+    parser = argparse.ArgumentParser(
+        description="Automate the setup and enumeration process for offensive security labs."
+    )
 
     # Initialize session arguments
-    session_group = parser.add_argument_group("Session Arguments", "Arguments related to session configuration")
-    session_group.add_argument("session_name", type=str, help="Name of the tmux session to be created")
-    session_group.add_argument("-v", "--vpn_path", type=str, help="Path of your VPN file")
-    session_group.add_argument("-s", "--session_path", type=str, default="/workspace/machines", help="Path to where the session will be created (default: /workspace/machines)")
-    session_group.add_argument("-i", "--ip", type=str, help="IP address of the target machine")
-    session_group.add_argument("--interface", type=str, default="tun0", help="VPN interface the scan sources from (default: tun0)")
-    session_group.add_argument("--lhost", type=str, help="Source IP for the port scan (default: auto-detected from --interface)")
+    session_group = parser.add_argument_group(
+        "Session Arguments", "Arguments related to session configuration"
+    )
+    session_group.add_argument(
+        "session_name", type=str, help="Name of the tmux session to be created"
+    )
+    session_group.add_argument(
+        "-v", "--vpn_path", type=str, help="Path of your VPN file"
+    )
+    session_group.add_argument(
+        "-s",
+        "--session_path",
+        type=str,
+        default="/workspace/machines",
+        help="Path to where the session will be created (default: /workspace/machines)",
+    )
+    session_group.add_argument(
+        "-i", "--ip", type=str, help="IP address of the target machine"
+    )
+    session_group.add_argument(
+        "--interface",
+        type=str,
+        default="tun0",
+        help="VPN interface the scan sources from (default: tun0)",
+    )
+    session_group.add_argument(
+        "--lhost",
+        type=str,
+        help="Source IP for the port scan (default: auto-detected from --interface)",
+    )
 
     # Initialize HTB CLI arguments
-    htb_cli_group = parser.add_argument_group("HTB CLI Arguments", "Arguments related to HTB CLI functionality")
-    htb_cli_group.add_argument("--spawn", type=str, help="Spawn the target machine via the HTB API instead of providing an IP (requires HTB_TOKEN env var)")
-    htb_cli_group.add_argument("-n", "--new_release", action="store_true", help="Wait until T-60s before the scheduled release time (7pm UTC) and spawn automatically via the HTB API")
+    htb_cli_group = parser.add_argument_group(
+        "HTB CLI Arguments", "Arguments related to HTB CLI functionality"
+    )
+    htb_cli_group.add_argument(
+        "--spawn",
+        type=str,
+        help="Spawn the target machine via the HTB API instead of providing an IP (requires HTB_TOKEN env var)",
+    )
+    htb_cli_group.add_argument(
+        "-n",
+        "--new_release",
+        action="store_true",
+        help="Wait until T-60s before the scheduled release time (7pm UTC) and spawn automatically via the HTB API",
+    )
 
     # Initialize automation arguments
-    automation_group = parser.add_argument_group("Automation Arguments", "Arguments related to automated tasking")
-    automation_group.add_argument("-a", "--automate", action="store_true", help="Optional flag to enable automated tasks on the fly from nmap scan results")
-    automation_group.add_argument("-u", "--username", type=str, help="Username to supply automated tasks (AD only)")
-    automation_group.add_argument("-p", "--password", type=str, help="Password to supply automated tasks (AD only)")
-    automation_group.add_argument("-d", "--debug", action="store_true", help="Enable debug mode for automation")
+    automation_group = parser.add_argument_group(
+        "Automation Arguments", "Arguments related to automated tasking"
+    )
+    automation_group.add_argument(
+        "-a",
+        "--automate",
+        action="store_true",
+        help="Optional flag to enable automated tasks on the fly from nmap scan results",
+    )
+    automation_group.add_argument(
+        "-u",
+        "--username",
+        type=str,
+        help="Username to supply automated tasks (AD only)",
+    )
+    automation_group.add_argument(
+        "-p",
+        "--password",
+        type=str,
+        help="Password to supply automated tasks (AD only)",
+    )
+    automation_group.add_argument(
+        "-d", "--debug", action="store_true", help="Enable debug mode for automation"
+    )
 
     # Initialize parser
     args = parser.parse_args()
@@ -133,25 +193,25 @@ def main():
     # Initialize tmux session
     server = libtmux.Server()
     session = server.new_session(
-        session_name=session_name,
-        window_name="services",
-        attach=False
+        session_name=session_name, window_name="services", attach=False
     )
     initial_window = session.active_window
     openvpn_pane = initial_window.active_pane
-    if os.path.isfile(vpn_path):
+    assert openvpn_pane is not None
+    if vpn_path and os.path.isfile(vpn_path):
         openvpn_pane.send_keys(f"sudo openvpn {vpn_path}")
-    ligolo_pane = openvpn_pane.split(direction=libtmux.pane.PaneDirection.Below)
+    ligolo_pane = openvpn_pane.split(direction=PaneDirection.Below)
     ligolo_pane.send_keys("mkdir -p ligolo; cd ligolo; proxy -selfcert")
-    ip_pane = openvpn_pane.split(direction=libtmux.pane.PaneDirection.Right)
+    ip_pane = openvpn_pane.split(direction=PaneDirection.Right)
     ip_pane.send_keys("command -v htb-gui &>/dev/null && htb-gui; ipa")
-    updog_pane = ligolo_pane.split(direction=libtmux.pane.PaneDirection.Right)
+    updog_pane = ligolo_pane.split(direction=PaneDirection.Right)
     updog_pane.send_keys("updog -p 8000 -d ~/staging")
     base_window = session.new_window(window_name=ip)
 
     # Initialize panes
     nmap_pane = base_window.active_pane
-    base_pane = base_window.split(direction=libtmux.pane.PaneDirection.Right)
+    assert nmap_pane is not None
+    base_pane = base_window.split(direction=PaneDirection.Right)
 
     # Fork process to attach to tmux session while executing additional tasks
     pid = os.fork()
@@ -159,7 +219,7 @@ def main():
         set_death_signal()
 
         # Establish connection with VPN and initialize the base window
-        if os.path.isfile(vpn_path):
+        if vpn_path and os.path.isfile(vpn_path):
             verify_connection(ip)
             sleep(1)
         session.select_window(2)
@@ -173,7 +233,7 @@ def main():
                     os.remove(file)
 
             # Clear log file while also making sure it exists
-            with open(log_file, 'w'):
+            with open(log_file, "w"):
                 pass
 
             # Initialize stdio depending on debug flag
@@ -189,7 +249,16 @@ def main():
                     os.dup2(null.fileno(), 2)
 
             # Initialize context
-            context = Context(session, nmap_pane, nmap_dir, tmux_pipe_file, log_file, users_file, creds_file, ip)
+            context = Context(
+                session,
+                nmap_pane,
+                nmap_dir,
+                tmux_pipe_file,
+                log_file,
+                users_file,
+                creds_file,
+                ip,
+            )
             if user and password:
                 context.add_initial_cred(user.lower(), password=password)
 
@@ -208,6 +277,7 @@ def main():
         os._exit(0)
     else:
         os.execvp("tmux", ["tmux", "attach-session", "-t", session_name])
+
 
 if __name__ == "__main__":
     main()

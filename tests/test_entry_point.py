@@ -9,4 +9,5 @@ def test_main_importable():
 def test_main_function_exists():
     """recon_setup.main exposes a callable main() function."""
     from recon_setup.main import main
+
     assert callable(main)

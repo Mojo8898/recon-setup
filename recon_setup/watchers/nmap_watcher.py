@@ -1,13 +1,14 @@
 import os
 import re
 from threading import Event
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
-from recon_setup.utils.tasks import handle_task
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 from recon_setup.utils.logger import write_log
-from recon_setup.utils.spray import start_spraying
 from recon_setup.utils.scan import SCAN_COMPLETE
+from recon_setup.utils.spray import start_spraying
+from recon_setup.utils.tasks import handle_task
 
 
 class NmapLogHandler(FileSystemEventHandler):
@@ -44,7 +45,7 @@ class NmapLogHandler(FileSystemEventHandler):
     def on_modified(self, event):
         if event.src_path != self.context.tmux_pipe_file:
             return
-        with open(self.context.tmux_pipe_file, "r") as tmux_pipe_file:
+        with open(self.context.tmux_pipe_file) as tmux_pipe_file:
             tmux_pipe_file.seek(self.last_position)
             new_lines = tmux_pipe_file.readlines()
             self.last_position = tmux_pipe_file.tell()
@@ -68,7 +69,9 @@ def watch_nmap(context):
     # Initialize nmap log handler and observer
     event_handler = NmapLogHandler(context)
     observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(context.tmux_pipe_file), recursive=False)
+    observer.schedule(
+        event_handler, path=os.path.dirname(context.tmux_pipe_file), recursive=False
+    )
     # Start the observer
     observer.start()
     try:
@@ -76,9 +79,14 @@ def watch_nmap(context):
     except Exception as e:
         write_log(context.log_file, f"Nmap observer interrupted: {str(e)}", "ERROR")
     finally:
-        write_log(context.log_file, "Initial nmap scan complete - stopping nmap observer")
+        write_log(
+            context.log_file, "Initial nmap scan complete - stopping nmap observer"
+        )
         observer.stop()
         observer.join()
         if context.is_ad:
-            write_log(context.log_file, "Machine identified as domain controller, watching for credentials to spray...")
+            write_log(
+                context.log_file,
+                "Machine identified as domain controller, watching for credentials to spray...",
+            )
             start_spraying(context)

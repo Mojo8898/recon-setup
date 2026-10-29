@@ -20,17 +20,19 @@ class TestCompletionSentinel:
     def test_command_outputs_the_marker(self):
         out = subprocess.run(
             ["bash", "-c", scan.SCAN_COMPLETE_CMD],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         assert out == scan.SCAN_COMPLETE
 
 
 class TestDetectLhost:
     def test_parses_inet_from_ip_output(self):
-        sample = (
-            "9: tun0    inet 10.10.15.203/23 brd 10.10.15.255 scope global tun0"
-        )
-        assert scan._INET_RE.search(sample).group(1) == "10.10.15.203"
+        sample = "9: tun0    inet 10.10.15.203/23 brd 10.10.15.255 scope global tun0"
+        match = scan._INET_RE.search(sample)
+        assert match is not None
+        assert match.group(1) == "10.10.15.203"
 
     def test_detect_lhost_missing_iface_returns_none(self):
         # A name that won't exist; detect_lhost swallows the error and returns None.

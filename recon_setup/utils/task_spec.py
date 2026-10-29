@@ -39,6 +39,7 @@ def load_spec(reload: bool = False) -> dict[str, Any]:
     if _cache is None or reload:
         with _SPEC_PATH.open(encoding="utf-8") as fh:
             _cache = yaml.safe_load(fh) or {}
+    assert _cache is not None
     return _cache
 
 

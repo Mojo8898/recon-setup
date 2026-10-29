@@ -181,7 +181,12 @@ def build_smb_commands(
     *logic*: choosing the auth/anon variant, looping once per non-default
     share, and the share_method guards.  It never hardcodes a command.
     """
-    params: dict = {"ip": ip, "dc_fqdn": dc_fqdn, "domain": domain, "ft": faketime_prefix(ip)}
+    params: dict = {
+        "ip": ip,
+        "dc_fqdn": dc_fqdn,
+        "domain": domain,
+        "ft": faketime_prefix(ip),
+    }
     if cred:
         params["user"], params["password"] = cred
 
@@ -199,7 +204,9 @@ def build_smb_commands(
                 if share["name"] in _NON_DEFAULT_SHARES:
                     continue
                 if spider_tpl:
-                    cmds += render_panes([spider_tpl], {**params, "share": share["name"]})
+                    cmds += render_panes(
+                        [spider_tpl], {**params, "share": share["name"]}
+                    )
 
             spider_plus_tpl = spec_get("smb", "spider_plus").get(share_method)
             if spider_plus_tpl:

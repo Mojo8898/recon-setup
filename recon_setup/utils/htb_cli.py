@@ -2,17 +2,18 @@
 
 import os
 import time
+from datetime import UTC, datetime
+
 import requests
-from datetime import datetime, timezone
 from rich.console import Console
 
 BASE_URL = "https://labs.hackthebox.com"
 
 # Rate-limit-aware timing constants
-SPAWN_INTERVAL = 4.4    # 60s / 15 spawn-limit * 1.1 buffer
+SPAWN_INTERVAL = 4.4  # 60s / 15 spawn-limit * 1.1 buffer
 IP_POLL_INTERVAL = 0.73  # 10s / 15 IP-poll-limit * 1.1 buffer (/api/v4/machine/active)
-SPAWN_WINDOW = 60       # seconds for the new-release retry window
-RATELIMIT_SLEEP = 60    # back-off when x-ratelimit-remaining <= 1
+SPAWN_WINDOW = 60  # seconds for the new-release retry window
+RATELIMIT_SLEEP = 60  # back-off when x-ratelimit-remaining <= 1
 
 
 def get_current_time():
@@ -21,18 +22,20 @@ def get_current_time():
     import struct
 
     NTP_DELTA = 2208988800  # seconds between 1900-01-01 and 1970-01-01
+    client = None
     try:
         client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client.settimeout(3)
         client.sendto(b"\x1b" + 47 * b"\0", ("pool.ntp.org", 123))
         data, _ = client.recvfrom(1024)
         t = struct.unpack("!12I", data)[10] - NTP_DELTA
-        return datetime.fromtimestamp(t, tz=timezone.utc)
+        return datetime.fromtimestamp(t, tz=UTC)
     except Exception as e:
         print(f"Error fetching time from NTP, falling back to local time: {e}")
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     finally:
-        client.close()
+        if client is not None:
+            client.close()
 
 
 def _check_ratelimit(response):
@@ -123,7 +126,7 @@ def spawn_machine(name, new_release):
     """
     token = os.environ.get("HTB_TOKEN")
     if not token:
-        raise EnvironmentError(
+        raise OSError(
             "HTB_TOKEN environment variable is not set. "
             "Export your HTB API token before running recon-setup."
         )
@@ -150,7 +153,9 @@ def spawn_machine(name, new_release):
         # Retry spawn every SPAWN_INTERVAL for a SPAWN_WINDOW-second window
         spawned = False
         window_end = time.monotonic() + SPAWN_WINDOW
-        with console.status("Attempting to spawn machine (new release)...", spinner="dots"):
+        with console.status(
+            "Attempting to spawn machine (new release)...", spinner="dots"
+        ):
             while time.monotonic() < window_end:
                 if spawn_machine_api(machine_id, token):
                     spawned = True

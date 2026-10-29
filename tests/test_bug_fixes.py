@@ -1,14 +1,16 @@
 """Tests for silent runtime bug fixes (task-002)."""
+
+import contextlib
 import os
 import subprocess
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-
 # ---------------------------------------------------------------------------
 # Bug 1: vpn_path crash when -v flag is not provided (os.path.abspath(None))
 # ---------------------------------------------------------------------------
+
 
 class TestVpnPathNoneGuard(unittest.TestCase):
     """main() must not crash with os.path.abspath(None) when -v is omitted."""
@@ -34,12 +36,14 @@ class TestVpnPathNoneGuard(unittest.TestCase):
 
         # The patched code should produce None, not raise TypeError.
         import os
+
         result = os.path.abspath(args.vpn_path) if args.vpn_path is not None else None
         self.assertIsNone(result)
 
     def test_parse_args_with_vpn_flag_resolves_path(self):
         """When -v is supplied, vpn_path should be resolved to an absolute path."""
         import os
+
         vpn_path = "/tmp/myvpn.ovpn"
         result = os.path.abspath(vpn_path) if vpn_path is not None else None
         self.assertEqual(result, "/tmp/myvpn.ovpn")
@@ -48,6 +52,7 @@ class TestVpnPathNoneGuard(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Bug 2: result NameError in spray.py enum_users (referenced outside try block)
 # ---------------------------------------------------------------------------
+
 
 class TestEnumUsersResultNameError(unittest.TestCase):
     """enum_users must not raise NameError when subprocess raises an exception."""
@@ -66,8 +71,10 @@ class TestEnumUsersResultNameError(unittest.TestCase):
         from recon_setup.utils.spray import enum_users
 
         ctx = self._make_context()
-        with patch("recon_setup.utils.spray.subprocess.run",
-                   side_effect=subprocess.CalledProcessError(1, "cmd", stderr="err")):
+        with patch(
+            "recon_setup.utils.spray.subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, "cmd", stderr="err"),
+        ):
             # Should not raise NameError or any unhandled exception
             try:
                 enum_users(ctx)
@@ -79,8 +86,10 @@ class TestEnumUsersResultNameError(unittest.TestCase):
         from recon_setup.utils.spray import enum_users
 
         ctx = self._make_context()
-        with patch("recon_setup.utils.spray.subprocess.run",
-                   side_effect=RuntimeError("network error")):
+        with patch(
+            "recon_setup.utils.spray.subprocess.run",
+            side_effect=RuntimeError("network error"),
+        ):
             try:
                 enum_users(ctx)
             except NameError:
@@ -111,27 +120,25 @@ class TestEnumUsersResultNameError(unittest.TestCase):
 # ports, and completes on the RECON_SCAN_COMPLETE sentinel.
 # ---------------------------------------------------------------------------
 
+
 class TestNmapLogHandlerCheatFormat(unittest.TestCase):
     IP = "10.129.78.184"
 
     def _handler(self):
         from recon_setup.watchers.nmap_watcher import NmapLogHandler
 
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False)
-        tmp.close()
-        self._pipe = tmp.name
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as tmp:
+            self._pipe = tmp.name
         ctx = MagicMock()
-        ctx.tmux_pipe_file = tmp.name
+        ctx.tmux_pipe_file = self._pipe
         ctx.ip = self.IP
-        return NmapLogHandler(ctx), tmp.name
+        return NmapLogHandler(ctx), self._pipe
 
     def tearDown(self):
         path = getattr(self, "_pipe", None)
         if path and os.path.exists(path):
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(path)
-            except OSError:
-                pass
 
     def _feed(self, handler, pipe, text, *, append=False):
         """Write *text* to the pipe and run one on_modified; return dispatched ports."""
@@ -140,8 +147,10 @@ class TestNmapLogHandlerCheatFormat(unittest.TestCase):
         event = MagicMock()
         event.src_path = pipe
         ports = []
-        with patch("recon_setup.watchers.nmap_watcher.handle_task",
-                   side_effect=lambda ctx, port: ports.append(port)):
+        with patch(
+            "recon_setup.watchers.nmap_watcher.handle_task",
+            side_effect=lambda ctx, port: ports.append(port),
+        ):
             handler.on_modified(event)
         return ports
 
@@ -158,7 +167,8 @@ class TestNmapLogHandlerCheatFormat(unittest.TestCase):
     def test_port_dispatched_once_across_tcp_and_udp(self):
         h, pipe = self._handler()
         ports = self._feed(
-            h, pipe,
+            h,
+            pipe,
             f"{self.IP}:53\nDiscovered open port 53/udp on {self.IP}\n",
         )
         self.assertEqual(ports, ["53"])
@@ -166,7 +176,8 @@ class TestNmapLogHandlerCheatFormat(unittest.TestCase):
     def test_service_detail_and_foreign_ip_lines_ignored(self):
         h, pipe = self._handler()
         ports = self._feed(
-            h, pipe,
+            h,
+            pipe,
             f"  445/tcp (microsoft-ds)\n10.10.10.99:8080\n{self.IP}:445\n",
         )
         self.assertEqual(ports, ["445"])

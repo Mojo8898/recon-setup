@@ -1,11 +1,13 @@
 import re
-import requests
 import subprocess
+
+import requests
 import urllib3
 
 from recon_setup.utils.logger import write_log
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 def add_entry(log_file, entry):
     """Handle hostfile generation and return hostname/domain"""
@@ -17,7 +19,7 @@ def add_entry(log_file, entry):
     new_ip = parts[0]
     new_hosts = set(host.lower() for host in parts[1:])
     try:
-        with open("/etc/hosts", "r") as f:
+        with open("/etc/hosts") as f:
             lines = f.readlines()
     except Exception as e:
         write_log(log_file, f"Failed to read /etc/hosts: {str(e)}", "ERROR")
@@ -43,65 +45,64 @@ def add_entry(log_file, entry):
     new_content = "".join(filtered_lines)
     try:
         subprocess.run(
-            ['sudo', '/usr/bin/tee', '/etc/hosts'],
+            ["sudo", "/usr/bin/tee", "/etc/hosts"],
             input=new_content,
             text=True,
             check=True,
-            capture_output=True
+            capture_output=True,
         )
         write_log(log_file, f"Added /etc/hosts entry: {entry}")
         if removed_entries:
             removed_str = ", ".join(removed_entries)
             write_log(log_file, f"- Removed conflicting entries: {removed_str}", "WARN")
     except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.strip() if e.stderr else 'Unknown error'
-        write_log(log_file, f"Failed to write to /etc/hosts with error: {error_msg}", "ERROR")
+        error_msg = e.stderr.strip() if e.stderr else "Unknown error"
+        write_log(
+            log_file, f"Failed to write to /etc/hosts with error: {error_msg}", "ERROR"
+        )
     except Exception as e:
-        write_log(log_file, f"Failed to write to /etc/hosts with error: {str(e)}", "ERROR")
+        write_log(
+            log_file, f"Failed to write to /etc/hosts with error: {str(e)}", "ERROR"
+        )
+
 
 def resolve_host(log_file, ip):
     cmd = f"nxc ldap {ip} --dns-server {ip}"
     try:
         result = subprocess.run(
-            cmd,
-            shell=True,
-            text=True,
-            capture_output=True,
-            timeout=2
+            cmd, shell=True, text=True, capture_output=True, timeout=2
         )
         stdout = result.stdout
     except Exception as e:
-        stdout = None
+        stdout = ""
         write_log(log_file, f"NetExec ldap subprocess error: {str(e)}", "ERROR")
-    if not (stdout or '').strip():
+    if not (stdout or "").strip():
         cmd = f"nxc smb {ip} --dns-server {ip}"
         try:
             result = subprocess.run(
-                cmd,
-                shell=True,
-                text=True,
-                capture_output=True,
-                timeout=4
+                cmd, shell=True, text=True, capture_output=True, timeout=4
             )
             stdout = result.stdout
         except Exception as e:
-            stdout = None
+            stdout = ""
             write_log(log_file, f"NetExec smb subprocess error: {str(e)}", "ERROR")
-        if not (stdout or '').strip():
-            for scheme in ['http', 'https']:
+        if not (stdout or "").strip():
+            for scheme in ["http", "https"]:
                 try:
                     response = requests.get(
                         f"{scheme}://{ip}",
                         allow_redirects=False,
                         timeout=4,
-                        verify=False
+                        verify=False,
                     )
-                    if response.is_redirect and 'location' in response.headers:
-                        fqdn = response.headers['location'].split('//')[-1].split('/')[0]
-                        fqdn_parts = fqdn.split('.')
-                        if len(fqdn.split('.')) > 2:
+                    if response.is_redirect and "location" in response.headers:
+                        fqdn = (
+                            response.headers["location"].split("//")[-1].split("/")[0]
+                        )
+                        fqdn_parts = fqdn.split(".")
+                        if len(fqdn.split(".")) > 2:
                             vhost = fqdn
-                            domain = '.'.join(fqdn_parts[1:])
+                            domain = ".".join(fqdn_parts[1:])
                             entry = f"{ip}\t{fqdn} {domain}"
                             write_log(log_file, f"Vhost discovered: {vhost}")
                         else:
@@ -116,8 +117,10 @@ def resolve_host(log_file, ip):
             write_log(log_file, "Failed to resolve hostname/domain", "WARN")
             return None, None, None
         else:
-            hostname = re.search(r"\(name:([^)]+)\)", result.stdout).group(1)
-            domain = re.search(r"\(domain:([^)]+)\)", result.stdout).group(1)
+            name_match = re.search(r"\(name:([^)]+)\)", stdout)
+            domain_match = re.search(r"\(domain:([^)]+)\)", stdout)
+            hostname = name_match.group(1) if name_match else ""
+            domain = domain_match.group(1) if domain_match else ""
             if not domain or hostname == domain:
                 entry = f"{ip}\t{hostname}"
             else:
@@ -125,8 +128,10 @@ def resolve_host(log_file, ip):
             add_entry(log_file, entry)
             return hostname, domain, None
     else:
-        hostname = re.search(r"\(name:([^)]+)\)", result.stdout).group(1)
-        domain = re.search(r"\(domain:([^)]+)\)", result.stdout).group(1)
+        name_match = re.search(r"\(name:([^)]+)\)", stdout)
+        domain_match = re.search(r"\(domain:([^)]+)\)", stdout)
+        hostname = name_match.group(1) if name_match else ""
+        domain = domain_match.group(1) if domain_match else ""
         if not domain or hostname == domain:
             entry = f"{ip}\t{hostname}"
         else:

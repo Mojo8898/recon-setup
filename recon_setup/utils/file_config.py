@@ -7,9 +7,9 @@ from recon_setup.utils.logger import write_log
 def populate_files(context):
     fqdn = context.get_target()
     # Write context files
-    open(context.tmux_pipe_file, 'a').close()
-    open(context.users_file, 'a').close()
-    open(context.creds_file, 'a').close()
+    open(context.tmux_pipe_file, "a").close()
+    open(context.users_file, "a").close()
+    open(context.creds_file, "a").close()
     # Write /etc/krb5.conf if a domain is detected
     if context.domain:
         default_realm = context.domain.upper()
@@ -44,10 +44,18 @@ def populate_files(context):
                 input=config_contents,
                 text=True,
                 check=True,
-                capture_output=True
+                capture_output=True,
             )
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.strip() if e.stderr else 'Unknown error'
-            write_log(context.log_file, f"Failed to write to /etc/krb5.conf with error: {error_msg}", "ERROR")
+            error_msg = e.stderr.strip() if e.stderr else "Unknown error"
+            write_log(
+                context.log_file,
+                f"Failed to write to /etc/krb5.conf with error: {error_msg}",
+                "ERROR",
+            )
         except Exception as e:
-            write_log(context.log_file, f"Failed to write to /etc/krb5.conf with error: {str(e)}", "ERROR")
+            write_log(
+                context.log_file,
+                f"Failed to write to /etc/krb5.conf with error: {str(e)}",
+                "ERROR",
+            )

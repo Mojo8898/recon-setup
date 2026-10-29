@@ -8,6 +8,7 @@ installed cheat corpus.
 """
 
 import pytest
+from aliasr.core.build import BuildError
 
 from recon_setup.utils import cheat_adapter as ca
 from recon_setup.utils.task_spec import TaskSpecError
@@ -87,14 +88,16 @@ class TestRenderCheat:
         assert "AR_SKEW" not in out
 
     def test_target_local_emits_bare(self, monkeypatch):
-        _patch(monkeypatch, _FakeCheat("whoami\nhostname", cheat_tags=("target/local",)))
+        _patch(
+            monkeypatch, _FakeCheat("whoami\nhostname", cheat_tags=("target/local",))
+        )
         out = ca.render_cheat({"file": "f", "section": "s"}, {"ip": "10.1.2.3"})
         assert "arun" not in out
         assert out == "whoami ; \\\nhostname"
 
     def test_strict_raises_on_unbound_placeholder(self, monkeypatch):
         _patch(monkeypatch, _FakeCheat("nxc <ip> <mystery>"))
-        with pytest.raises(Exception):  # aliasr BuildError surfaces the typo
+        with pytest.raises(BuildError):
             ca.render_cheat({"file": "f", "section": "s"}, {"ip": "10.1.2.3"})
 
 

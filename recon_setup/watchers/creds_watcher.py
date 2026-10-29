@@ -1,20 +1,23 @@
 import os
 from threading import Event
-from watchdog.observers import Observer
+
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from recon_setup.utils.logger import write_log
 
+
 class CredsFileHandler(FileSystemEventHandler):
     """Monitors creds log file for open ports and scan completion"""
+
     def __init__(self, context):
         super().__init__()
         self.context = context
-        self.completed = Event() # Event to signal scan completion
+        self.completed = Event()  # Event to signal scan completion
 
     def on_modified(self, event):
         if event.src_path == self.context.creds_file:
-            with open(event.src_path, 'r') as file:
+            with open(event.src_path) as file:
                 lines = file.read().splitlines()
             if not lines:
                 return
@@ -24,17 +27,20 @@ class CredsFileHandler(FileSystemEventHandler):
                     last_line = line.strip()
                     break
             if last_line:
-                parts = line.split(':', 1)
+                parts = last_line.split(":", 1)
                 user, password = parts
                 self.context.add_cred(user, password)
                 self.context.spray_cred(user, password)
-                self.completed.set() # Signal that scan is complete
+                self.completed.set()  # Signal that scan is complete
+
 
 def watch_creds(context):
     # Initialize creds log handler and observer
     event_handler = CredsFileHandler(context)
     observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(context.creds_file), recursive=False)
+    observer.schedule(
+        event_handler, path=os.path.dirname(context.creds_file), recursive=False
+    )
     # Start the observer
     observer.start()
     try:
